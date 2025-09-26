@@ -48,26 +48,52 @@ contract PlayerTest is Test {
         vm.stopPrank();
     }
 
-    function test_StartAndCompleteTravel() public {
+    function test_InstantTravel() public {
         vm.startPrank(owner);
-        uint256 shipId = ships.mintShip(user, "Test Ship", 2); // Harkonnen Harvester with 800 spice capacity
+        uint256 shipId = ships.mintShip(user, "Test Ship", 2); // Harkonnen Harvester with 8000 spice capacity, 80 speed
         ships.setAuthorizedManager(address(player), true);
         player.registerPlayer(user, 1, shipId);
         vm.stopPrank();
 
         vm.startPrank(owner);
-        ships.updateSpice(shipId, 800); // Set to max capacity for Harkonnen Harvester
+        ships.updateSpice(shipId, 5000); // Set to enough spice for travel
         vm.stopPrank();
 
+        // Get initial spice amount and ship attributes
+        Ships.ShipAttributes memory shipBefore = ships.getShipAttributes(shipId);
+        uint256 initialSpice = shipBefore.currentSpice;
+
+        // Get travel cost
+        World.TravelCost memory cost = world.getTravelCost(1, 2);
+
+        // Calculate expected adjusted time cost based on ship speed (80 = 0.8x speed, so longer time)
+        uint256 expectedAdjustedTimeCost = (cost.timeCost * 100) / shipBefore.speed;
+
         vm.startPrank(user);
-        player.startTravel(2);
+        player.instantTravel(2);
+
+        // Verify player is in transit (planet 0)
+        assertEq(player.getPlayerLocation(user), 0);
+
+        // Verify player is traveling
         assertTrue(player.isPlayerTraveling(user));
 
-        // Roll blocks forward to complete travel
-        vm.roll(block.number + world.getTravelCost(1, 2).timeCost);
+        // Verify spice was consumed
+        Ships.ShipAttributes memory shipAfter = ships.getShipAttributes(shipId);
+        assertEq(shipAfter.currentSpice, initialSpice - cost.spiceCost);
 
+        // Fast forward time to complete travel using adjusted time cost
+        vm.warp(block.timestamp + expectedAdjustedTimeCost);
+
+        // Complete travel
         player.completeTravel();
+
+        // Verify player arrived at destination
         assertEq(player.getPlayerLocation(user), 2);
+
+        // Verify player is no longer traveling
+        assertFalse(player.isPlayerTraveling(user));
+
         vm.stopPrank();
     }
 
@@ -82,7 +108,8 @@ contract PlayerTest is Test {
         uint256 shipId = player.getPlayerActiveShip(user);
         Ships.ShipAttributes memory ship = ships.getShipAttributes(shipId);
         assertEq(ship.shipClass, 0); // Atreides Scout
-        assertEq(ship.currentSpice, 300); // Full spice tank
+        assertEq(ship.currentSpice, 3000); // Full spice tank
+        assertEq(ship.speed, 100); // 1.0x speed
         vm.stopPrank();
     }
 }

@@ -21,7 +21,11 @@ contract ShipsTest is Test {
         vm.startPrank(minter);
         uint256 tokenId = ships.mintShip(user, "Test Ship", 0);
         assertEq(ships.ownerOf(tokenId), user);
-        assertEq(ships.getShipAttributes(tokenId).shipClass, 0);
+        Ships.ShipAttributes memory ship = ships.getShipAttributes(tokenId);
+        assertEq(ship.shipClass, 0);
+        assertEq(ship.speed, 100); // Atreides Scout: 1.0x speed
+        assertEq(ship.spiceCapacity, 3000); // Updated capacity
+        assertEq(ship.currentSpice, 3000); // Starts with full tank
         vm.stopPrank();
     }
 

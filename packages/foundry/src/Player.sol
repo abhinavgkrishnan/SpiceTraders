@@ -14,8 +14,8 @@ contract Player is Ownable, ReentrancyGuard {
         uint256 activeShipId;
         uint256[] shipIds; // All ships owned by the player
         uint256 lastActionTimestamp;
-        uint256 currentTripStartBlock;
-        uint256 currentTripEndBlock;
+        uint256 currentTripStartTime;
+        uint256 currentTripEndTime;
         uint256 currentTripToPlanetId;
     }
 
@@ -29,7 +29,7 @@ contract Player is Ownable, ReentrancyGuard {
     event PlayerRegistered(address indexed player, uint256 startPlanetId);
     event PlayerLocationChanged(address indexed player, uint256 newPlanetId, uint256 activeShipId);
     event ActiveShipChanged(address indexed player, uint256 newActiveShipId);
-    event PlayerTripStarted(address indexed player, uint256 fromPlanet, uint256 toPlanet, uint256 endBlock);
+    event PlayerTripStarted(address indexed player, uint256 fromPlanet, uint256 toPlanet, uint256 endTime);
 
     constructor(address initialOwner, address _worldContract, address _shipsContract, address _creditsContract) Ownable(initialOwner) {
         worldContract = World(_worldContract);
@@ -90,47 +90,58 @@ contract Player is Ownable, ReentrancyGuard {
         playerStates[player].shipIds.push(shipId);
     }
 
-    function startTravel(uint256 toPlanetId) external nonReentrant {
+
+    function instantTravel(uint256 toPlanetId) external nonReentrant {
         address player = msg.sender;
         require(isPlayerRegistered[player], "Player not registered");
         require(!isPlayerTraveling(player), "Player is already traveling");
 
         uint256 fromPlanetId = playerStates[player].currentPlanetId;
-        uint256 activeShipId = playerStates[player].activeShipId;
+        require(fromPlanetId != toPlanetId, "Cannot travel to the same planet");
 
+        // Get travel cost from World contract
         World.TravelCost memory cost = worldContract.getTravelCost(fromPlanetId, toPlanetId);
-        require(cost.spiceCost > 0 || fromPlanetId == toPlanetId, "Travel not possible"); // No cost means no route
+        require(cost.spiceCost > 0 || fromPlanetId == toPlanetId, "Travel not possible");
 
-        // Consume spice from active ship (spice is the only fuel)
+        // Check if ship has enough spice
+        uint256 activeShipId = playerStates[player].activeShipId;
+        Ships.ShipAttributes memory shipAttrs = shipsContract.getShipAttributes(activeShipId);
+        require(shipAttrs.currentSpice >= cost.spiceCost, "Insufficient spice for travel");
+
+        // Calculate adjusted travel time based on ship speed
+        // Speed is a multiplier: 100 = 1x, 120 = 1.2x faster (shorter time), 80 = 0.8x slower (longer time)
+        uint256 adjustedTimeCost = (cost.timeCost * 100) / shipAttrs.speed;
+
+        // Deduct spice and set travel state with time delay
         shipsContract.consumeSpice(activeShipId, cost.spiceCost);
 
-        uint256 endBlock = block.number + cost.timeCost;
-
-        // Update player state to traveling
-        playerStates[player].currentTripStartBlock = block.number;
-        playerStates[player].currentTripEndBlock = endBlock;
+        // Set travel state
+        playerStates[player].currentTripStartTime = block.timestamp;
+        playerStates[player].currentTripEndTime = block.timestamp + adjustedTimeCost;
         playerStates[player].currentTripToPlanetId = toPlanetId;
-        playerStates[player].currentPlanetId = 0; // In transit, not on any planet
+        playerStates[player].currentPlanetId = 0; // In transit
+        playerStates[player].lastActionTimestamp = block.timestamp;
 
-        emit PlayerTripStarted(player, fromPlanetId, toPlanetId, endBlock);
+        emit PlayerTripStarted(player, fromPlanetId, toPlanetId, block.timestamp + adjustedTimeCost);
     }
 
     function completeTravel() external nonReentrant {
         address player = msg.sender;
         require(isPlayerRegistered[player], "Player not registered");
-        require(playerStates[player].currentTripEndBlock > 0, "Player is not traveling");
-        require(block.number >= playerStates[player].currentTripEndBlock, "Trip not yet complete");
+        require(isPlayerTraveling(player), "Player is not traveling");
+        require(block.timestamp >= playerStates[player].currentTripEndTime, "Travel not yet complete");
 
         uint256 destinationPlanetId = playerStates[player].currentTripToPlanetId;
+        uint256 activeShipId = playerStates[player].activeShipId;
 
-        // Update player state to be at the destination
+        // Complete the travel
         playerStates[player].currentPlanetId = destinationPlanetId;
-        playerStates[player].currentTripStartBlock = 0;
-        playerStates[player].currentTripEndBlock = 0;
+        playerStates[player].currentTripStartTime = 0;
+        playerStates[player].currentTripEndTime = 0;
         playerStates[player].currentTripToPlanetId = 0;
         playerStates[player].lastActionTimestamp = block.timestamp;
 
-        emit PlayerLocationChanged(player, destinationPlanetId, playerStates[player].activeShipId);
+        emit PlayerLocationChanged(player, destinationPlanetId, activeShipId);
     }
 
     function getPlayerState(address player) external view returns (PlayerState memory) {
@@ -149,7 +160,7 @@ contract Player is Ownable, ReentrancyGuard {
     }
 
     function isPlayerTraveling(address player) public view returns (bool) {
-        return playerStates[player].currentTripEndBlock > block.number;
+        return playerStates[player].currentTripEndTime > 0;
     }
 
     function updateLastActionTimestamp(address player) external onlyOwner {

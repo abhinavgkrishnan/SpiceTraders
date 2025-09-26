@@ -121,7 +121,40 @@ contract World is Ownable, ReentrancyGuard {
         require(fromPlanetId > 0 && fromPlanetId <= planetCount, "From planet does not exist");
         require(toPlanetId > 0 && toPlanetId <= planetCount, "To planet does not exist");
 
-        return travelCosts[fromPlanetId][toPlanetId];
+        if (fromPlanetId == toPlanetId) {
+            return TravelCost(0, 0);
+        }
+
+        // Calculate 3D distance between planets
+        Planet memory fromPlanet = planets[fromPlanetId];
+        Planet memory toPlanet = planets[toPlanetId];
+
+        uint256 dx = fromPlanet.x > toPlanet.x ? fromPlanet.x - toPlanet.x : toPlanet.x - fromPlanet.x;
+        uint256 dy = fromPlanet.y > toPlanet.y ? fromPlanet.y - toPlanet.y : toPlanet.y - fromPlanet.y;
+        uint256 dz = fromPlanet.z > toPlanet.z ? fromPlanet.z - toPlanet.z : toPlanet.z - fromPlanet.z;
+
+        // Calculate squared distance to avoid expensive sqrt
+        uint256 distanceSquared = dx * dx + dy * dy + dz * dz;
+
+        // Calculate spice cost based on distance (1 spice per distance unit)
+        uint256 spiceCost = sqrt(distanceSquared);
+
+        // Calculate time cost in seconds (0.5 seconds per distance unit for 1-10 min range)
+        uint256 timeCost = sqrt(distanceSquared) / 2;
+
+        return TravelCost(spiceCost, timeCost);
+    }
+
+    // Simple integer square root function using Newton's method
+    function sqrt(uint256 x) internal pure returns (uint256) {
+        if (x == 0) return 0;
+        uint256 z = (x + 1) / 2;
+        uint256 y = x;
+        while (z < y) {
+            y = z;
+            z = (x / z + z) / 2;
+        }
+        return y;
     }
 
     function getPlanetResourceConcentration(uint256 planetId, uint256 resourceIndex) external view returns (uint256) {

@@ -16,6 +16,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         uint256 spiceCapacity;  // Only spice is used as fuel
         uint256 currentSpice;
         uint256 shipClass; // 0: Atreides Scout, 1: Guild Frigate, 2: Harkonnen Harvester, 3: Imperial Dreadnought
+        uint256 speed; // Speed multiplier (100 = 1x, 120 = 1.2x faster)
         bool active;
     }
 
@@ -29,6 +30,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
     // Ship class configurations
     mapping(uint256 => uint256) public defaultCargoCapacity;
     mapping(uint256 => uint256) public defaultSpiceCapacity;
+    mapping(uint256 => uint256) public defaultSpeed;
 
     event ShipMinted(uint256 indexed tokenId, address indexed to, uint256 shipClass);
     event ShipAttributesUpdated(uint256 indexed tokenId);
@@ -59,10 +61,15 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         defaultCargoCapacity[2] = 1000; // Harkonnen Harvester: 1000 units
         defaultCargoCapacity[3] = 2000; // Imperial Dreadnought: 2000 units
 
-        defaultSpiceCapacity[0] = 300;  // Atreides Scout: 300 spice (round-trip capable)
-        defaultSpiceCapacity[1] = 500;  // Guild Frigate: 500 spice
-        defaultSpiceCapacity[2] = 800;  // Harkonnen Harvester: 800 spice
-        defaultSpiceCapacity[3] = 1200; // Imperial Dreadnought: 1200 spice
+        defaultSpiceCapacity[0] = 2000;  // Atreides Scout: 2000 spice (round-trip to nearest planet)
+        defaultSpiceCapacity[1] = 5000;  // Guild Frigate: 5000 spice
+        defaultSpiceCapacity[2] = 8000;  // Harkonnen Harvester: 8000 spice (multiple trips)
+        defaultSpiceCapacity[3] = 12000; // Imperial Dreadnought: 12000 spice (long range)
+
+        defaultSpeed[0] = 100;  // Atreides Scout: 1.0x speed (baseline)
+        defaultSpeed[1] = 120;  // Guild Frigate: 1.2x speed (faster)
+        defaultSpeed[2] = 80;   // Harkonnen Harvester: 0.8x speed (slower but high cargo)
+        defaultSpeed[3] = 150;  // Imperial Dreadnought: 1.5x speed (fastest)
 
         _baseTokenURI = baseURI;
     }
@@ -96,6 +103,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         uint256 tokenId = _nextTokenId++;
         uint256 cargoCapacity = defaultCargoCapacity[shipClass];
         uint256 spiceCapacity = defaultSpiceCapacity[shipClass];
+        uint256 speed = defaultSpeed[shipClass];
 
         ships[tokenId] = ShipAttributes({
             name: shipName,
@@ -103,6 +111,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
             spiceCapacity: spiceCapacity,
             currentSpice: spiceCapacity, // Start with full spice tank
             shipClass: shipClass,
+            speed: speed,
             active: true
         });
 
