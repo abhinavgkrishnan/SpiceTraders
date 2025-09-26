@@ -1,0 +1,11 @@
+{
+  "name": "foundry",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "compile": "forge build",
+    "test": "forge test",
+    "deploy:sepolia": "forge script script/Counter.s.sol:CounterScript --rpc-url ${BASE_SEPOLIA_RPC_URL} --broadcast --verify -vvvv",
+    "deploy:base": "forge script script/Counter.s.sol:CounterScript --rpc-url ${BASE_RPC_URL} --broadcast --verify -vvvv"
+  }
+}
