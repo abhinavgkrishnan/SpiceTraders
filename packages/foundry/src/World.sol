@@ -11,12 +11,12 @@ contract World is Ownable, ReentrancyGuard {
         uint256 y;
         uint256 z;
         bool active;
-        uint256[4] resourceConcentration; // [IRON, COPPER, WATER, FUEL] percentages (0-100)
+        uint256[4] resourceConcentration; // [METAL, SAPHO_JUICE, WATER, SPICE] percentages (0-100)
         uint256 baseMiningDifficulty; // Base difficulty multiplier (100 = 1x)
     }
 
     struct TravelCost {
-        uint256 fuelCost;
+        uint256 spiceCost;  // Only spice is used for travel
         uint256 timeCost; // in blocks
     }
 
@@ -26,11 +26,11 @@ contract World is Ownable, ReentrancyGuard {
 
     uint256 public planetCount;
     uint256 public constant MAX_COORDINATE = 10000;
-    uint256 public constant BASE_FUEL_PER_DISTANCE = 1; // fuel per distance unit
+    uint256 public constant BASE_SPICE_PER_DISTANCE = 60; // 0.6 spice per distance unit (multiplied by 100 for precision)
 
     event PlanetCreated(uint256 indexed planetId, string name, uint256 x, uint256 y, uint256 z);
     event PlanetUpdated(uint256 indexed planetId);
-    event TravelCostUpdated(uint256 indexed fromPlanet, uint256 indexed toPlanet, uint256 fuelCost, uint256 timeCost);
+    event TravelCostUpdated(uint256 indexed fromPlanet, uint256 indexed toPlanet, uint256 spiceCost, uint256 timeCost);
 
     constructor(address initialOwner) Ownable(initialOwner) {
         _initializeDefaultPlanets();
@@ -95,15 +95,15 @@ contract World is Ownable, ReentrancyGuard {
     function setTravelCost(
         uint256 fromPlanetId,
         uint256 toPlanetId,
-        uint256 fuelCost,
+        uint256 spiceCost,
         uint256 timeCost
     ) external onlyOwner {
         require(fromPlanetId > 0 && fromPlanetId <= planetCount, "From planet does not exist");
         require(toPlanetId > 0 && toPlanetId <= planetCount, "To planet does not exist");
         require(fromPlanetId != toPlanetId, "Cannot travel to same planet");
 
-        travelCosts[fromPlanetId][toPlanetId] = TravelCost(fuelCost, timeCost);
-        emit TravelCostUpdated(fromPlanetId, toPlanetId, fuelCost, timeCost);
+        travelCosts[fromPlanetId][toPlanetId] = TravelCost(spiceCost, timeCost);
+        emit TravelCostUpdated(fromPlanetId, toPlanetId, spiceCost, timeCost);
     }
 
     function getPlanet(uint256 planetId) external view returns (Planet memory) {
@@ -200,33 +200,33 @@ contract World is Ownable, ReentrancyGuard {
         for (uint256 i = 1; i < newPlanetId; i++) {
             if (planets[i].active) {
                 uint256 distance = calculateDistance(i, newPlanetId);
-                uint256 fuelCost = distance * BASE_FUEL_PER_DISTANCE;
+                uint256 spiceCost = (distance * BASE_SPICE_PER_DISTANCE) / 100; // 0.6 spice per distance unit
                 uint256 timeCost = distance / 10 + 1; // Simplified time calculation
 
                 // Set bidirectional travel costs
-                travelCosts[i][newPlanetId] = TravelCost(fuelCost, timeCost);
-                travelCosts[newPlanetId][i] = TravelCost(fuelCost, timeCost);
+                travelCosts[i][newPlanetId] = TravelCost(spiceCost, timeCost);
+                travelCosts[newPlanetId][i] = TravelCost(spiceCost, timeCost);
 
-                emit TravelCostUpdated(i, newPlanetId, fuelCost, timeCost);
-                emit TravelCostUpdated(newPlanetId, i, fuelCost, timeCost);
+                emit TravelCostUpdated(i, newPlanetId, spiceCost, timeCost);
+                emit TravelCostUpdated(newPlanetId, i, spiceCost, timeCost);
             }
         }
     }
 
     function _initializeDefaultPlanets() internal {
-        // Earth (starting planet)
-        createPlanet("Earth", 5000, 5000, 5000, [uint256(30), uint256(20), uint256(40), uint256(10)], 100);
+        // Caladan (starting world, balanced resources)
+        createPlanet("Caladan", 5000, 5000, 5000, [uint256(25), uint256(20), uint256(35), uint256(20)], 100);
 
-        // Mars (iron rich)
-        createPlanet("Mars", 5200, 5100, 4900, [uint256(60), uint256(15), uint256(10), uint256(15)], 120);
+        // Arrakis (spice world, VERY dangerous but high yield)
+        createPlanet("Arrakis", 5200, 5100, 4900, [uint256(10), uint256(15), uint256(5), uint256(70)], 300);
 
-        // Europa (water rich)
-        createPlanet("Europa", 4800, 5300, 5200, [uint256(10), uint256(15), uint256(65), uint256(10)], 150);
+        // Giedi Prime (industrial world)
+        createPlanet("Giedi Prime", 4800, 5300, 5200, [uint256(55), uint256(25), uint256(15), uint256(5)], 120);
 
-        // Titan (fuel rich)
-        createPlanet("Titan", 5100, 4700, 5300, [uint256(15), uint256(20), uint256(20), uint256(45)], 140);
+        // Ix (Mentat training world, rich in sapho juice)
+        createPlanet("Ix", 5100, 4700, 5300, [uint256(15), uint256(60), uint256(20), uint256(5)], 140);
 
-        // Ceres (copper rich)
-        createPlanet("Ceres", 4900, 5200, 4800, [uint256(20), uint256(50), uint256(15), uint256(15)], 110);
+        // Kaitain (imperial world, balanced)
+        createPlanet("Kaitain", 4900, 5200, 4800, [uint256(30), uint256(30), uint256(25), uint256(15)], 110);
     }
 }

@@ -9,10 +9,10 @@ import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 
 contract Tokens is ERC1155, Ownable, ERC1155Pausable, ERC1155Burnable, ERC1155Supply {
     enum ResourceType {
-        IRON,
-        COPPER,
-        WATER,
-        FUEL
+        METAL,       // Industrial materials (formerly IRON)
+        SAPHO_JUICE, // Mentat computational enhancer (formerly COPPER/TECH)
+        WATER,       // Life essence
+        SPICE        // The only fuel source that powers everything (formerly FUEL)
     }
 
     mapping(uint256 => string) private _tokenURIs;
@@ -26,8 +26,8 @@ contract Tokens is ERC1155, Ownable, ERC1155Pausable, ERC1155Burnable, ERC1155Su
         _;
     }
 
-    constructor(address initialOwner)
-        ERC1155("https://api.spacetrade.game/tokens/{id}.json")
+    constructor(address initialOwner, string memory baseURI)
+        ERC1155(baseURI)
         Ownable(initialOwner)
     {
         authorizedMinters[initialOwner] = true;
@@ -59,6 +59,10 @@ contract Tokens is ERC1155, Ownable, ERC1155Pausable, ERC1155Burnable, ERC1155Su
     function setTokenURI(uint256 tokenId, string memory tokenURI) external onlyOwner {
         _tokenURIs[tokenId] = tokenURI;
         emit TokenURISet(tokenId, tokenURI);
+    }
+
+    function setBaseURI(string memory baseURI) external onlyOwner {
+        _setURI(baseURI);
     }
 
     function uri(uint256 tokenId) public view override returns (string memory) {

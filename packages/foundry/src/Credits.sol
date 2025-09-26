@@ -9,8 +9,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract Credits is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     mapping(address => bool) public authorizedMinters;
 
-    uint256 public constant STARTER_AMOUNT = 1000 * 10**18; // 1000 Credits for new players
-    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18; // 1 billion Credits max
+    uint256 public constant STARTER_AMOUNT = 1500 * 10**18; // 1500 Solaris for new players
+    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18; // 1 billion Solaris max
 
     event AuthorizedMinterSet(address indexed minter, bool authorized);
 
@@ -20,11 +20,11 @@ contract Credits is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     }
 
     constructor(address initialOwner)
-        ERC20("Space Credits", "CREDITS")
+        ERC20("Imperial Solaris", "SOLARIS")
         Ownable(initialOwner)
     {
         authorizedMinters[initialOwner] = true;
-        _mint(initialOwner, 100_000_000 * 10**18); // Initial supply: 100M Credits
+        _mint(initialOwner, 100_000_000 * 10**18); // Initial supply: 100M Solaris
     }
 
     function setAuthorizedMinter(address minter, bool authorized) external onlyOwner {

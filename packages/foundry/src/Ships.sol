@@ -13,9 +13,9 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
     struct ShipAttributes {
         string name;
         uint256 cargoCapacity;
-        uint256 fuelCapacity;
-        uint256 currentFuel;
-        uint256 shipClass; // 0: Scout, 1: Trader, 2: Industrial, 3: Capital
+        uint256 spiceCapacity;  // Only spice is used as fuel
+        uint256 currentSpice;
+        uint256 shipClass; // 0: Atreides Scout, 1: Guild Frigate, 2: Harkonnen Harvester, 3: Imperial Dreadnought
         bool active;
     }
 
@@ -28,13 +28,13 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
 
     // Ship class configurations
     mapping(uint256 => uint256) public defaultCargoCapacity;
-    mapping(uint256 => uint256) public defaultFuelCapacity;
+    mapping(uint256 => uint256) public defaultSpiceCapacity;
 
     event ShipMinted(uint256 indexed tokenId, address indexed to, uint256 shipClass);
     event ShipAttributesUpdated(uint256 indexed tokenId);
     event AuthorizedMinterSet(address indexed minter, bool authorized);
     event AuthorizedManagerSet(address indexed manager, bool authorized);
-    event FuelUpdated(uint256 indexed tokenId, uint256 newFuelAmount);
+    event SpiceUpdated(uint256 indexed tokenId, uint256 newSpiceAmount);
 
     modifier onlyAuthorizedMinter() {
         require(authorizedMinters[msg.sender] || msg.sender == owner(), "Not authorized to mint");
@@ -46,25 +46,25 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         _;
     }
 
-    constructor(address initialOwner)
-        ERC721("Space Ships", "SHIPS")
+    constructor(address initialOwner, string memory baseURI)
+        ERC721("Guild Heighliners", "SHIPS")
         Ownable(initialOwner)
     {
         authorizedMinters[initialOwner] = true;
         authorizedManagers[initialOwner] = true;
 
-        // Set default ship class specifications
-        defaultCargoCapacity[0] = 100;  // Scout: 100 units
-        defaultCargoCapacity[1] = 500;  // Trader: 500 units
-        defaultCargoCapacity[2] = 1000; // Industrial: 1000 units
-        defaultCargoCapacity[3] = 2000; // Capital: 2000 units
+        // Set default ship class specifications (balanced for 0.6 spice per distance travel)
+        defaultCargoCapacity[0] = 150;  // Atreides Scout: 150 units
+        defaultCargoCapacity[1] = 500;  // Guild Frigate: 500 units
+        defaultCargoCapacity[2] = 1000; // Harkonnen Harvester: 1000 units
+        defaultCargoCapacity[3] = 2000; // Imperial Dreadnought: 2000 units
 
-        defaultFuelCapacity[0] = 200;   // Scout: 200 fuel
-        defaultFuelCapacity[1] = 300;   // Trader: 300 fuel
-        defaultFuelCapacity[2] = 500;   // Industrial: 500 fuel
-        defaultFuelCapacity[3] = 800;   // Capital: 800 fuel
+        defaultSpiceCapacity[0] = 300;  // Atreides Scout: 300 spice (round-trip capable)
+        defaultSpiceCapacity[1] = 500;  // Guild Frigate: 500 spice
+        defaultSpiceCapacity[2] = 800;  // Harkonnen Harvester: 800 spice
+        defaultSpiceCapacity[3] = 1200; // Imperial Dreadnought: 1200 spice
 
-        _baseTokenURI = "https://api.spacetrade.game/ships/";
+        _baseTokenURI = baseURI;
     }
 
     function setAuthorizedMinter(address minter, bool authorized) external onlyOwner {
@@ -95,13 +95,13 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
 
         uint256 tokenId = _nextTokenId++;
         uint256 cargoCapacity = defaultCargoCapacity[shipClass];
-        uint256 fuelCapacity = defaultFuelCapacity[shipClass];
+        uint256 spiceCapacity = defaultSpiceCapacity[shipClass];
 
         ships[tokenId] = ShipAttributes({
             name: shipName,
             cargoCapacity: cargoCapacity,
-            fuelCapacity: fuelCapacity,
-            currentFuel: fuelCapacity, // Start with full fuel
+            spiceCapacity: spiceCapacity,
+            currentSpice: spiceCapacity, // Start with full spice tank
             shipClass: shipClass,
             active: true
         });
@@ -112,35 +112,35 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
     }
 
     function mintStarterShip(address to, string memory shipName) external onlyAuthorizedMinter returns (uint256) {
-        return _mintShip(to, shipName, 0); // Mint a Scout ship as starter
+        return _mintShip(to, shipName, 0); // Mint an Atreides Scout as starter
     }
 
-    function updateFuel(uint256 tokenId, uint256 newFuelAmount) external onlyAuthorizedManager {
+    function updateSpice(uint256 tokenId, uint256 newSpiceAmount) external onlyAuthorizedManager {
         require(_ownerOf(tokenId) != address(0), "Ship does not exist");
-        require(newFuelAmount <= ships[tokenId].fuelCapacity, "Fuel amount exceeds capacity");
+        require(newSpiceAmount <= ships[tokenId].spiceCapacity, "Spice amount exceeds capacity");
 
-        ships[tokenId].currentFuel = newFuelAmount;
-        emit FuelUpdated(tokenId, newFuelAmount);
+        ships[tokenId].currentSpice = newSpiceAmount;
+        emit SpiceUpdated(tokenId, newSpiceAmount);
     }
 
-    function consumeFuel(uint256 tokenId, uint256 fuelAmount) external onlyAuthorizedManager {
+    function consumeSpice(uint256 tokenId, uint256 spiceAmount) external onlyAuthorizedManager {
         require(_ownerOf(tokenId) != address(0), "Ship does not exist");
-        require(ships[tokenId].currentFuel >= fuelAmount, "Insufficient fuel");
+        require(ships[tokenId].currentSpice >= spiceAmount, "Insufficient spice");
 
-        ships[tokenId].currentFuel -= fuelAmount;
-        emit FuelUpdated(tokenId, ships[tokenId].currentFuel);
+        ships[tokenId].currentSpice -= spiceAmount;
+        emit SpiceUpdated(tokenId, ships[tokenId].currentSpice);
     }
 
-    function refillFuel(uint256 tokenId, uint256 fuelAmount) external onlyAuthorizedManager {
+    function refillSpice(uint256 tokenId, uint256 spiceAmount) external onlyAuthorizedManager {
         require(_ownerOf(tokenId) != address(0), "Ship does not exist");
 
-        uint256 newFuelAmount = ships[tokenId].currentFuel + fuelAmount;
-        if (newFuelAmount > ships[tokenId].fuelCapacity) {
-            newFuelAmount = ships[tokenId].fuelCapacity;
+        uint256 newSpiceAmount = ships[tokenId].currentSpice + spiceAmount;
+        if (newSpiceAmount > ships[tokenId].spiceCapacity) {
+            newSpiceAmount = ships[tokenId].spiceCapacity;
         }
 
-        ships[tokenId].currentFuel = newFuelAmount;
-        emit FuelUpdated(tokenId, newFuelAmount);
+        ships[tokenId].currentSpice = newSpiceAmount;
+        emit SpiceUpdated(tokenId, newSpiceAmount);
     }
 
     function updateShipName(uint256 tokenId, string memory newName) external {
