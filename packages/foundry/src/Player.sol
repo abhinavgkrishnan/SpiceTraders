@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./World.sol";
 import "./Ships.sol";
+import "./Credits.sol";
 
 contract Player is Ownable, ReentrancyGuard {
     struct PlayerState {
@@ -20,6 +21,7 @@ contract Player is Ownable, ReentrancyGuard {
 
     World public worldContract;
     Ships public shipsContract;
+    Credits public creditsContract;
 
     mapping(address => PlayerState) public playerStates;
     mapping(address => bool) public isPlayerRegistered;
@@ -29,9 +31,10 @@ contract Player is Ownable, ReentrancyGuard {
     event ActiveShipChanged(address indexed player, uint256 newActiveShipId);
     event PlayerTripStarted(address indexed player, uint256 fromPlanet, uint256 toPlanet, uint256 endBlock);
 
-    constructor(address initialOwner, address _worldContract, address _shipsContract) Ownable(initialOwner) {
+    constructor(address initialOwner, address _worldContract, address _shipsContract, address _creditsContract) Ownable(initialOwner) {
         worldContract = World(_worldContract);
         shipsContract = Ships(_shipsContract);
+        creditsContract = Credits(_creditsContract);
     }
 
     function registerPlayer(address player, uint256 startPlanetId, uint256 startShipId) external onlyOwner {
@@ -43,6 +46,28 @@ contract Player is Ownable, ReentrancyGuard {
         playerStates[player].currentPlanetId = startPlanetId;
         playerStates[player].activeShipId = startShipId;
         playerStates[player].shipIds.push(startShipId);
+        playerStates[player].lastActionTimestamp = block.timestamp;
+
+        isPlayerRegistered[player] = true;
+        emit PlayerRegistered(player, startPlanetId);
+    }
+
+    function onboardNewPlayer(address player, string memory shipName) external nonReentrant {
+        require(!isPlayerRegistered[player], "Player already registered");
+
+        // Mint starter credits (1500 Solaris)
+        creditsContract.mintStarterAmount(player);
+
+        // Mint starter ship (Atreides Scout with full spice tank)
+        uint256 shipId = shipsContract.mintStarterShip(player, shipName);
+
+        // Register player on Caladan (planet ID 1)
+        uint256 startPlanetId = 1;
+
+        playerStates[player].playerAddress = player;
+        playerStates[player].currentPlanetId = startPlanetId;
+        playerStates[player].activeShipId = shipId;
+        playerStates[player].shipIds.push(shipId);
         playerStates[player].lastActionTimestamp = block.timestamp;
 
         isPlayerRegistered[player] = true;
