@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "forge-std/Test.sol";
+import "../src/Ships.sol";
+
+contract ShipsTest is Test {
+    Ships public ships;
+    address public owner = address(0x1);
+    address public minter = address(0x2);
+    address public user = address(0x3);
+
+    function setUp() public {
+        vm.startPrank(owner);
+        ships = new Ships(owner, "https://api.test.game/ships/");
+        ships.setAuthorizedMinter(minter, true);
+        vm.stopPrank();
+    }
+
+    function test_MintShip() public {
+        vm.startPrank(minter);
+        uint256 tokenId = ships.mintShip(user, "Test Ship", 0);
+        assertEq(ships.ownerOf(tokenId), user);
+        assertEq(ships.getShipAttributes(tokenId).shipClass, 0);
+        vm.stopPrank();
+    }
+
+    function test_Fail_UnauthorizedMint() public {
+        vm.startPrank(user);
+        vm.expectRevert("Not authorized to mint");
+        ships.mintShip(user, "Test Ship", 0);
+        vm.stopPrank();
+    }
+
+    function test_UpdateSpice() public {
+        vm.startPrank(owner);
+        ships.setAuthorizedManager(minter, true);
+        vm.stopPrank();
+
+        vm.startPrank(minter);
+        uint256 tokenId = ships.mintShip(user, "Test Ship", 0);
+        ships.updateSpice(tokenId, 100);
+        assertEq(ships.getShipAttributes(tokenId).currentSpice, 100);
+        vm.stopPrank();
+    }
+
+    function test_Fail_UnauthorizedUpdateSpice() public {
+        vm.startPrank(minter);
+        uint256 tokenId = ships.mintShip(user, "Test Ship", 0);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        vm.expectRevert("Not authorized to manage");
+        ships.updateSpice(tokenId, 100);
+        vm.stopPrank();
+    }
+
+    function test_Transfer() public {
+        vm.startPrank(minter);
+        uint256 tokenId = ships.mintShip(user, "Test Ship", 0);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        ships.transferFrom(user, owner, tokenId);
+        assertEq(ships.ownerOf(tokenId), owner);
+        vm.stopPrank();
+    }
+}
