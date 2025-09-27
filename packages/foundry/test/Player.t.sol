@@ -6,6 +6,7 @@ import "../src/Player.sol";
 import "../src/World.sol";
 import "../src/Ships.sol";
 import "../src/Credits.sol";
+import "../src/Tokens.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract PlayerTest is Test {
@@ -13,6 +14,7 @@ contract PlayerTest is Test {
     World public world;
     Ships public ships;
     Credits public credits;
+    Tokens public tokens;
     address public owner = address(0x1);
     address public user = address(0x3);
 
@@ -20,11 +22,14 @@ contract PlayerTest is Test {
         vm.startPrank(owner);
         world = new World(owner);
         credits = new Credits(owner);
+        tokens = new Tokens(owner, "https://api.test.game/tokens/");
         ships = new Ships(owner, "https://api.test.game/ships/", address(credits));
-        player = new Player(owner, address(world), address(ships), address(credits));
+        player = new Player(owner, address(world), address(ships), address(credits), address(tokens));
         ships.setAuthorizedMinter(owner, true);
         ships.setAuthorizedMinter(address(player), true);
+        ships.setAuthorizedManager(address(player), true);
         credits.setAuthorizedMinter(address(player), true);
+        tokens.setAuthorizedMinter(owner, true);
         vm.stopPrank();
     }
 
@@ -110,6 +115,201 @@ contract PlayerTest is Test {
         assertEq(ship.shipClass, 0); // Atreides Scout
         assertEq(ship.currentSpice, 2000); // Starter ships come with 2000 spice
         assertEq(ship.speed, 100); // 1.0x speed
+        vm.stopPrank();
+    }
+
+    function test_RefuelShip() public {
+        // Setup: Onboard player with starter ship
+        vm.startPrank(user);
+        player.onboardNewPlayer(user, "Test Ship");
+        uint256 shipId = player.getPlayerActiveShip(user);
+        vm.stopPrank();
+
+        // Give player some SPICE tokens (token ID 3)
+        vm.startPrank(owner);
+        tokens.mint(user, 3, 1000, ""); // Mint 1000 SPICE
+        vm.stopPrank();
+
+        // Get initial ship spice
+        Ships.ShipAttributes memory shipBefore = ships.getShipAttributes(shipId);
+        uint256 initialSpice = shipBefore.currentSpice;
+        uint256 initialSpiceTokens = tokens.balanceOf(user, 3);
+
+        // Approve Player contract to burn SPICE tokens
+        vm.startPrank(user);
+        tokens.setApprovalForAll(address(player), true);
+
+        // Refuel with 500 SPICE
+        player.refuelShip(shipId, 500);
+        vm.stopPrank();
+
+        // Verify ship spice increased
+        Ships.ShipAttributes memory shipAfter = ships.getShipAttributes(shipId);
+        assertEq(shipAfter.currentSpice, initialSpice + 500);
+
+        // Verify SPICE tokens were burned
+        uint256 finalSpiceTokens = tokens.balanceOf(user, 3);
+        assertEq(finalSpiceTokens, initialSpiceTokens - 500);
+    }
+
+    function test_RefuelShip_CappedAtMaxCapacity() public {
+        // Setup: Onboard player with starter ship
+        vm.startPrank(user);
+        player.onboardNewPlayer(user, "Test Ship");
+        uint256 shipId = player.getPlayerActiveShip(user);
+        vm.stopPrank();
+
+        // Give player lots of SPICE tokens
+        vm.startPrank(owner);
+        tokens.mint(user, 3, 5000, ""); // Mint 5000 SPICE
+        vm.stopPrank();
+
+        // Try to refuel beyond max capacity (Atreides Scout has 3000 max)
+        Ships.ShipAttributes memory shipBefore = ships.getShipAttributes(shipId);
+        uint256 maxCapacity = shipBefore.spiceCapacity;
+
+        vm.startPrank(user);
+        tokens.setApprovalForAll(address(player), true);
+        player.refuelShip(shipId, 2000); // This should cap at max capacity
+        vm.stopPrank();
+
+        // Verify ship is at max capacity
+        Ships.ShipAttributes memory shipAfter = ships.getShipAttributes(shipId);
+        assertEq(shipAfter.currentSpice, maxCapacity);
+    }
+
+    function test_Fail_RefuelShip_InsufficientSpiceTokens() public {
+        // Setup: Onboard player with starter ship
+        vm.startPrank(user);
+        player.onboardNewPlayer(user, "Test Ship");
+        uint256 shipId = player.getPlayerActiveShip(user);
+        vm.stopPrank();
+
+        // Try to refuel without enough SPICE tokens
+        vm.startPrank(user);
+        vm.expectRevert("Insufficient SPICE tokens");
+        player.refuelShip(shipId, 500);
+        vm.stopPrank();
+    }
+
+    function test_Fail_RefuelShip_NotShipOwner() public {
+        // Setup: Onboard player with starter ship
+        vm.startPrank(user);
+        player.onboardNewPlayer(user, "Test Ship");
+        uint256 shipId = player.getPlayerActiveShip(user);
+        vm.stopPrank();
+
+        // Give another user SPICE tokens and register them
+        address attacker = address(0x4);
+        vm.startPrank(attacker);
+        player.onboardNewPlayer(attacker, "Attacker Ship");
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+        tokens.mint(attacker, 3, 1000, "");
+        vm.stopPrank();
+
+        // Try to refuel someone else's ship
+        vm.startPrank(attacker);
+        tokens.setApprovalForAll(address(player), true);
+        vm.expectRevert("Player does not own this ship");
+        player.refuelShip(shipId, 500);
+        vm.stopPrank();
+    }
+
+    function test_Fail_RefuelShip_DuringTravel() public {
+        // Setup: Onboard player and start travel
+        vm.startPrank(user);
+        player.onboardNewPlayer(user, "Test Ship");
+        uint256 shipId = player.getPlayerActiveShip(user);
+        vm.stopPrank();
+
+        // Give player SPICE tokens
+        vm.startPrank(owner);
+        tokens.mint(user, 3, 1000, "");
+        vm.stopPrank();
+
+        // Start travel
+        vm.startPrank(user);
+        player.instantTravel(2); // Travel to Arrakis
+
+        // Try to refuel during travel
+        vm.expectRevert("Cannot refuel during travel");
+        player.refuelShip(shipId, 500);
+        vm.stopPrank();
+    }
+
+    function test_BuyShip() public {
+        // Setup: Onboard player
+        vm.startPrank(user);
+        player.onboardNewPlayer(user, "First Ship");
+        vm.stopPrank();
+
+        // Give player enough credits to buy a Guild Frigate (25,000 Solaris)
+        vm.startPrank(owner);
+        credits.mint(user, 25000 * 10**18);
+        vm.stopPrank();
+
+        // Get initial state
+        Player.PlayerState memory stateBefore = player.getPlayerState(user);
+        uint256 initialShipCount = stateBefore.shipIds.length;
+        uint256 initialCredits = credits.balanceOf(user);
+
+        // Approve credits for purchase
+        vm.startPrank(user);
+        credits.approve(address(player), 25000 * 10**18);
+
+        // Buy a Guild Frigate (class 1)
+        player.buyShip("My Frigate", 1);
+        vm.stopPrank();
+
+        // Verify new ship was added to player's fleet
+        Player.PlayerState memory stateAfter = player.getPlayerState(user);
+        assertEq(stateAfter.shipIds.length, initialShipCount + 1);
+
+        // Verify credits were deducted
+        uint256 finalCredits = credits.balanceOf(user);
+        assertEq(finalCredits, initialCredits - 25000 * 10**18);
+
+        // Verify ship attributes
+        uint256 newShipId = stateAfter.shipIds[stateAfter.shipIds.length - 1];
+        Ships.ShipAttributes memory ship = ships.getShipAttributes(newShipId);
+        assertEq(ship.shipClass, 1); // Guild Frigate
+        assertEq(ship.cargoCapacity, 500);
+        assertEq(ship.spiceCapacity, 5000);
+        assertEq(ship.speed, 120); // 1.2x speed
+        assertEq(ship.currentSpice, 5000); // New ships start with full tank
+    }
+
+    function test_SetActiveShip() public {
+        // Setup: Onboard player
+        vm.startPrank(user);
+        player.onboardNewPlayer(user, "First Ship");
+        vm.stopPrank();
+
+        uint256 firstShipId = player.getPlayerActiveShip(user);
+
+        // Give player credits and buy another ship
+        vm.startPrank(owner);
+        credits.mint(user, 10000 * 10**18);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        credits.approve(address(player), 10000 * 10**18);
+        player.buyShip("Second Ship", 0);
+
+        Player.PlayerState memory state = player.getPlayerState(user);
+        uint256 secondShipId = state.shipIds[state.shipIds.length - 1];
+
+        // Switch to second ship
+        player.setActiveShip(secondShipId);
+
+        // Verify active ship changed
+        assertEq(player.getPlayerActiveShip(user), secondShipId);
+
+        // Switch back to first ship
+        player.setActiveShip(firstShipId);
+        assertEq(player.getPlayerActiveShip(user), firstShipId);
         vm.stopPrank();
     }
 }

@@ -30,7 +30,7 @@ contract MarketTest is Test {
         tokens = new Tokens(owner, "https://api.test.game/tokens/{id}.json");
         credits = new Credits(owner);
         poolManager = new PoolManager(owner);
-        player = new Player(owner, address(world), address(0), address(credits));
+        player = new Player(owner, address(world), address(0), address(credits), address(tokens));
         market = new Market(owner, address(player), address(tokens), address(credits), address(poolManager));
         vm.stopPrank();
     }

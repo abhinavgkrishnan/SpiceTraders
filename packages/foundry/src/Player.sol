@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./World.sol";
 import "./Ships.sol";
 import "./Credits.sol";
+import "./Tokens.sol";
 
 contract Player is Ownable, ReentrancyGuard {
     struct PlayerState {
@@ -22,6 +23,7 @@ contract Player is Ownable, ReentrancyGuard {
     World public worldContract;
     Ships public shipsContract;
     Credits public creditsContract;
+    Tokens public tokensContract;
 
     mapping(address => PlayerState) public playerStates;
     mapping(address => bool) public isPlayerRegistered;
@@ -30,11 +32,13 @@ contract Player is Ownable, ReentrancyGuard {
     event PlayerLocationChanged(address indexed player, uint256 newPlanetId, uint256 activeShipId);
     event ActiveShipChanged(address indexed player, uint256 newActiveShipId);
     event PlayerTripStarted(address indexed player, uint256 fromPlanet, uint256 toPlanet, uint256 endTime);
+    event ShipRefueled(address indexed player, uint256 indexed shipId, uint256 spiceAmount);
 
-    constructor(address initialOwner, address _worldContract, address _shipsContract, address _creditsContract) Ownable(initialOwner) {
+    constructor(address initialOwner, address _worldContract, address _shipsContract, address _creditsContract, address _tokensContract) Ownable(initialOwner) {
         worldContract = World(_worldContract);
         shipsContract = Ships(_shipsContract);
         creditsContract = Credits(_creditsContract);
+        tokensContract = Tokens(_tokensContract);
     }
 
     function registerPlayer(address player, uint256 startPlanetId, uint256 startShipId) external onlyOwner {
@@ -94,11 +98,35 @@ contract Player is Ownable, ReentrancyGuard {
         require(isPlayerRegistered[msg.sender], "Player not registered");
         require(!isPlayerTraveling(msg.sender), "Cannot buy ships during travel");
 
-        // Buy the ship from the Ships contract
-        uint256 shipId = shipsContract.buyShip(shipName, shipClass);
+        uint256 price = shipsContract.getShipPrice(shipClass);
+        require(creditsContract.balanceOf(msg.sender) >= price, "Insufficient credits");
+
+        // Transfer credits from player to Ships contract owner
+        creditsContract.transferFrom(msg.sender, owner(), price);
+
+        // Mint the ship directly since we handled payment
+        uint256 shipId = shipsContract.mintShip(msg.sender, shipName, shipClass);
 
         // Add ship to player's fleet
         playerStates[msg.sender].shipIds.push(shipId);
+    }
+
+    function refuelShip(uint256 shipId, uint256 spiceAmount) external nonReentrant {
+        require(isPlayerRegistered[msg.sender], "Player not registered");
+        require(shipsContract.ownerOf(shipId) == msg.sender, "Player does not own this ship");
+        require(!isPlayerTraveling(msg.sender), "Cannot refuel during travel");
+        require(spiceAmount > 0, "Amount must be greater than zero");
+
+        // Check player has enough SPICE tokens (token ID 3)
+        require(tokensContract.balanceOf(msg.sender, 3) >= spiceAmount, "Insufficient SPICE tokens");
+
+        // Burn SPICE tokens from player inventory
+        tokensContract.burn(msg.sender, 3, spiceAmount);
+
+        // Refill ship with spice (capped at ship's max capacity)
+        shipsContract.refillSpice(shipId, spiceAmount);
+
+        emit ShipRefueled(msg.sender, shipId, spiceAmount);
     }
 
 

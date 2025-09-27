@@ -26,7 +26,7 @@ contract MiningTest is Test {
         credits = new Credits(owner);
         ships = new Ships(owner, "https://api.test.game/ships/", address(credits));
         ships.setAuthorizedMinter(owner, true);
-        player = new Player(owner, address(world), address(ships), address(credits));
+        player = new Player(owner, address(world), address(ships), address(credits), address(tokens));
         mining = new Mining(owner, address(tokens), address(player), address(world), address(ships), 0x41c9e39574F40Ad34c79f1C99B66A45eFB830d4c);
         tokens.setAuthorizedMinter(address(mining), true);
         uint256 shipId = ships.mintStarterShip(user, "Test Ship");
