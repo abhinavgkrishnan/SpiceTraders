@@ -17,9 +17,9 @@ contract Mining is Ownable, ReentrancyGuard, IEntropyConsumer {
     Ships public shipsContract;
     IEntropyV2 public entropy;
 
-    uint256 public constant MINING_COOLDOWN = 90 seconds; // Fast engagement for better gameplay
-    uint256 public constant BASE_MINING_RATE = 12; // Increased base units per cycle (20% boost)
-    uint256 public constant SPICE_DIFFICULTY_MULTIPLIER = 150; // All spice mining is inherently difficult
+    uint256 public constant MINING_COOLDOWN = 60 seconds; // Fast engagement for better gameplay
+    uint256 public constant BASE_MINING_RATE = 45; // Balanced for meaningful cargo fills
+    uint256 public constant SPICE_DIFFICULTY_MULTIPLIER = 110; // Spice is valuable but not prohibitively difficult
 
     mapping(address => uint256) public lastMiningTimestamp;
     mapping(uint64 => address) public sequenceToPlayer;
@@ -62,54 +62,52 @@ contract Mining is Ownable, ReentrancyGuard, IEntropyConsumer {
         Ships.ShipAttributes memory ship = shipsContract.getShipAttributes(shipId);
         require(ship.active, "Ship is not active");
 
-        // Get the fee for the entropy request
-        uint256 fee = entropy.getFeeV2();
-        require(msg.value >= fee, "Insufficient fee for entropy request");
+        // PRODUCTION: Uncomment for real Pyth Entropy
+        // uint256 fee = entropy.getFeeV2();
+        // require(msg.value >= fee, "Insufficient fee for entropy request");
+        // uint64 sequenceNumber = entropy.requestV2{value: fee}();
+        // sequenceToPlayer[sequenceNumber] = player;
+        // sequenceToPlanet[sequenceNumber] = planetId;
+        // sequenceToShip[sequenceNumber] = shipId;
 
-        // Request random number from Pyth Entropy
-        uint64 sequenceNumber = entropy.requestV2{value: fee}();
+        // TESTING: Pseudo-random for local development
+        bytes32 pseudoRandom = keccak256(abi.encodePacked(
+            block.timestamp,
+            block.prevrandao,
+            player,
+            planetId,
+            shipId
+        ));
 
-        // Store the sequence number mapping for callback
-        sequenceToPlayer[sequenceNumber] = player;
-        sequenceToPlanet[sequenceNumber] = planetId;
-        sequenceToShip[sequenceNumber] = shipId;
+        // Process mining immediately with pseudo-random for testing
+        _processMining(player, planetId, shipId, pseudoRandom);
 
         lastMiningTimestamp[player] = block.timestamp;
-        playerContract.updateLastActionTimestamp(player);
+        // TODO: Fix authorization for Mining contract to call this
+        // playerContract.updateLastActionTimestamp(player);
 
-        emit MiningRequested(player, planetId, sequenceNumber);
-
-        // Refund excess payment
-        if (msg.value > fee) {
-            payable(player).transfer(msg.value - fee);
-        }
+        // TESTING: No sequence number or fee for pseudo-random
+        // emit MiningRequested(player, planetId, sequenceNumber);
+        // if (msg.value > fee) {
+        //     payable(player).transfer(msg.value - fee);
+        // }
     }
 
     function setEntropyAddress(address _entropy) external onlyOwner {
         entropy = IEntropyV2(_entropy);
     }
 
-    function entropyCallback(
-        uint64 sequenceNumber,
-        address, // provider - unused but required by interface
+    function _processMining(
+        address player,
+        uint256 planetId,
+        uint256 shipId,
         bytes32 randomNumber
-    ) internal override {
-        address player = sequenceToPlayer[sequenceNumber];
-        uint256 planetId = sequenceToPlanet[sequenceNumber];
-        uint256 shipId = sequenceToShip[sequenceNumber];
-
-        require(player != address(0), "Invalid sequence number");
-
-        // Clean up mappings
-        delete sequenceToPlayer[sequenceNumber];
-        delete sequenceToPlanet[sequenceNumber];
-        delete sequenceToShip[sequenceNumber];
-
+    ) internal {
         // Get ship and planet data
         Ships.ShipAttributes memory ship = shipsContract.getShipAttributes(shipId);
         World.Planet memory planet = worldContract.getPlanet(planetId);
 
-        // Use entropy to get a random yield multiplier (50% to 150%)
+        // Use randomness to get a random yield multiplier (50% to 150%)
         uint256 yieldMultiplier = 50 + (uint256(randomNumber) % 101);
 
         uint256[] memory resourceIds = new uint256[](4);
@@ -150,6 +148,26 @@ contract Mining is Ownable, ReentrancyGuard, IEntropyConsumer {
         }
 
         emit Mined(player, planetId, resourceIds, amounts);
+    }
+
+    function entropyCallback(
+        uint64 sequenceNumber,
+        address, // provider - unused but required by interface
+        bytes32 randomNumber
+    ) internal override {
+        address player = sequenceToPlayer[sequenceNumber];
+        uint256 planetId = sequenceToPlanet[sequenceNumber];
+        uint256 shipId = sequenceToShip[sequenceNumber];
+
+        require(player != address(0), "Invalid sequence number");
+
+        // Clean up mappings
+        delete sequenceToPlayer[sequenceNumber];
+        delete sequenceToPlanet[sequenceNumber];
+        delete sequenceToShip[sequenceNumber];
+
+        // Process mining with entropy
+        _processMining(player, planetId, shipId, randomNumber);
     }
 
     function getEntropy() internal view override returns (address) {
