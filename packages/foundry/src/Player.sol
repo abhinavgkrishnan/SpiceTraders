@@ -90,6 +90,17 @@ contract Player is Ownable, ReentrancyGuard {
         playerStates[player].shipIds.push(shipId);
     }
 
+    function buyShip(string memory shipName, uint256 shipClass) external nonReentrant {
+        require(isPlayerRegistered[msg.sender], "Player not registered");
+        require(!isPlayerTraveling(msg.sender), "Cannot buy ships during travel");
+
+        // Buy the ship from the Ships contract
+        uint256 shipId = shipsContract.buyShip(shipName, shipClass);
+
+        // Add ship to player's fleet
+        playerStates[msg.sender].shipIds.push(shipId);
+    }
+
 
     function instantTravel(uint256 toPlanetId) external nonReentrant {
         address player = msg.sender;

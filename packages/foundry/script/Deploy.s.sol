@@ -37,7 +37,7 @@ contract DeployScript is Script {
         Tokens tokens = new Tokens(deployer, tokensBaseURI);
         console.log("Tokens (Resources) deployed to:", address(tokens));
 
-        Ships ships = new Ships(deployer, shipsBaseURI);
+        Ships ships = new Ships(deployer, shipsBaseURI, address(credits));
         console.log("Ships (Guild Heighliners) deployed to:", address(ships));
 
         World world = new World(deployer);

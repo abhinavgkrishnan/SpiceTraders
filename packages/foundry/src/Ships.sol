@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "./Credits.sol";
 
 contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
     using Strings for uint256;
@@ -24,6 +25,8 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
     mapping(address => bool) public authorizedMinters;
     mapping(address => bool) public authorizedManagers;
 
+    Credits public creditsContract;
+
     uint256 private _nextTokenId = 1;
     string private _baseTokenURI;
 
@@ -31,6 +34,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
     mapping(uint256 => uint256) public defaultCargoCapacity;
     mapping(uint256 => uint256) public defaultSpiceCapacity;
     mapping(uint256 => uint256) public defaultSpeed;
+    mapping(uint256 => uint256) public shipPrices;
 
     event ShipMinted(uint256 indexed tokenId, address indexed to, uint256 shipClass);
     event ShipAttributesUpdated(uint256 indexed tokenId);
@@ -48,12 +52,13 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         _;
     }
 
-    constructor(address initialOwner, string memory baseURI)
+    constructor(address initialOwner, string memory baseURI, address _creditsContract)
         ERC721("Guild Heighliners", "SHIPS")
         Ownable(initialOwner)
     {
         authorizedMinters[initialOwner] = true;
         authorizedManagers[initialOwner] = true;
+        creditsContract = Credits(_creditsContract);
 
         // Set default ship class specifications (balanced for 0.6 spice per distance travel)
         defaultCargoCapacity[0] = 150;  // Atreides Scout: 150 units
@@ -61,7 +66,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         defaultCargoCapacity[2] = 1000; // Harkonnen Harvester: 1000 units
         defaultCargoCapacity[3] = 2000; // Imperial Dreadnought: 2000 units
 
-        defaultSpiceCapacity[0] = 2000;  // Atreides Scout: 2000 spice (round-trip to nearest planet)
+        defaultSpiceCapacity[0] = 3000;  // Atreides Scout: 3000 spice (round-trips to nearest planet)
         defaultSpiceCapacity[1] = 5000;  // Guild Frigate: 5000 spice
         defaultSpiceCapacity[2] = 8000;  // Harkonnen Harvester: 8000 spice (multiple trips)
         defaultSpiceCapacity[3] = 12000; // Imperial Dreadnought: 12000 spice (long range)
@@ -70,6 +75,11 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         defaultSpeed[1] = 120;  // Guild Frigate: 1.2x speed (faster)
         defaultSpeed[2] = 80;   // Harkonnen Harvester: 0.8x speed (slower but high cargo)
         defaultSpeed[3] = 150;  // Imperial Dreadnought: 1.5x speed (fastest)
+
+        shipPrices[0] = 10000 * 10**18;   // Atreides Scout: 10,000 Solaris
+        shipPrices[1] = 25000 * 10**18;   // Guild Frigate: 25,000 Solaris
+        shipPrices[2] = 50000 * 10**18;   // Harkonnen Harvester: 50,000 Solaris
+        shipPrices[3] = 100000 * 10**18;  // Imperial Dreadnought: 100,000 Solaris
 
         _baseTokenURI = baseURI;
     }
@@ -121,7 +131,45 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
     }
 
     function mintStarterShip(address to, string memory shipName) external onlyAuthorizedMinter returns (uint256) {
-        return _mintShip(to, shipName, 0); // Mint an Atreides Scout as starter
+        require(bytes(shipName).length > 0, "Ship name cannot be empty");
+
+        uint256 tokenId = _nextTokenId++;
+        uint256 cargoCapacity = defaultCargoCapacity[0]; // Atreides Scout
+        uint256 spiceCapacity = defaultSpiceCapacity[0]; // 3000 capacity
+        uint256 speed = defaultSpeed[0]; // 100 speed
+
+        ships[tokenId] = ShipAttributes({
+            name: shipName,
+            cargoCapacity: cargoCapacity,
+            spiceCapacity: spiceCapacity,
+            currentSpice: 2000, // Start with 2000 spice (not full tank)
+            shipClass: 0, // Atreides Scout
+            speed: speed,
+            active: true
+        });
+
+        _safeMint(to, tokenId);
+        emit ShipMinted(tokenId, to, 0);
+        return tokenId;
+    }
+
+    function buyShip(string memory shipName, uint256 shipClass) external returns (uint256) {
+        require(shipClass <= 3, "Invalid ship class");
+        require(bytes(shipName).length > 0, "Ship name cannot be empty");
+
+        uint256 price = shipPrices[shipClass];
+        require(creditsContract.balanceOf(msg.sender) >= price, "Insufficient credits");
+
+        // Transfer credits from buyer to contract owner
+        creditsContract.transferFrom(msg.sender, owner(), price);
+
+        // Mint the ship
+        return _mintShip(msg.sender, shipName, shipClass);
+    }
+
+    function getShipPrice(uint256 shipClass) external view returns (uint256) {
+        require(shipClass <= 3, "Invalid ship class");
+        return shipPrices[shipClass];
     }
 
     function updateSpice(uint256 tokenId, uint256 newSpiceAmount) external onlyAuthorizedManager {

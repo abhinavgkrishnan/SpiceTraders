@@ -19,8 +19,8 @@ contract PlayerTest is Test {
     function setUp() public {
         vm.startPrank(owner);
         world = new World(owner);
-        ships = new Ships(owner, "https://api.test.game/ships/");
         credits = new Credits(owner);
+        ships = new Ships(owner, "https://api.test.game/ships/", address(credits));
         player = new Player(owner, address(world), address(ships), address(credits));
         ships.setAuthorizedMinter(owner, true);
         ships.setAuthorizedMinter(address(player), true);
@@ -108,7 +108,7 @@ contract PlayerTest is Test {
         uint256 shipId = player.getPlayerActiveShip(user);
         Ships.ShipAttributes memory ship = ships.getShipAttributes(shipId);
         assertEq(ship.shipClass, 0); // Atreides Scout
-        assertEq(ship.currentSpice, 3000); // Full spice tank
+        assertEq(ship.currentSpice, 2000); // Starter ships come with 2000 spice
         assertEq(ship.speed, 100); // 1.0x speed
         vm.stopPrank();
     }

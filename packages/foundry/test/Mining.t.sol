@@ -23,8 +23,8 @@ contract MiningTest is Test {
         vm.startPrank(owner);
         tokens = new Tokens(owner, "https://api.test.game/tokens/{id}.json");
         world = new World(owner);
-        ships = new Ships(owner, "https://api.test.game/ships/");
         credits = new Credits(owner);
+        ships = new Ships(owner, "https://api.test.game/ships/", address(credits));
         ships.setAuthorizedMinter(owner, true);
         player = new Player(owner, address(world), address(ships), address(credits));
         mining = new Mining(owner, address(tokens), address(player), address(world), address(ships), 0x41c9e39574F40Ad34c79f1C99B66A45eFB830d4c);
