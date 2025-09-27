@@ -51,6 +51,33 @@ export const PlayerABI = [
     inputs: [],
     outputs: [],
   },
+  {
+    type: "function",
+    name: "setActiveShip",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "shipId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "buyShip",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "shipName", type: "string" },
+      { name: "shipClass", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "refuelShip",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "shipId", type: "uint256" },
+      { name: "spiceAmount", type: "uint256" },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 export const MiningABI = [
@@ -133,6 +160,20 @@ export const ShipsABI = [
         ],
       },
     ],
+  },
+  {
+    type: "function",
+    name: "getShipsByOwner",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "uint256[]" }],
+  },
+  {
+    type: "function",
+    name: "getShipPrice",
+    stateMutability: "view",
+    inputs: [{ name: "shipClass", type: "uint256" }],
+    outputs: [{ type: "uint256" }],
   },
 ] as const;
 

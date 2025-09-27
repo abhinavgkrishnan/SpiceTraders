@@ -8,6 +8,7 @@ import { HUD } from "@/components/HUD";
 import { MineButton } from "@/components/MineButton";
 import { TravelCard } from "@/components/TravelCard";
 import { MarketCard } from "@/components/MarketCard";
+import { BuyShipCard } from "@/components/BuyShipCard";
 import { OnboardingDialog } from "@/components/OnboardingDialog";
 import { Toaster } from "@/components/ui/toaster";
 import { Rocket } from "lucide-react";
@@ -36,7 +37,7 @@ export default function Home() {
         <header className="flex items-center justify-between py-4">
           <div className="flex items-center gap-2">
             <Rocket className="h-8 w-8 text-amber-500" />
-            <h1 className="text-2xl font-bold text-amber-500">Space Traders</h1>
+            <h1 className="text-2xl font-bold text-amber-500">Spice Traders</h1>
           </div>
           <ConnectKitButton />
         </header>
@@ -64,6 +65,7 @@ export default function Home() {
             <MineButton />
             <TravelCard />
             <MarketCard />
+            <BuyShipCard />
           </>
         ) : null}
 

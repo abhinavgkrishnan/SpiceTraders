@@ -62,10 +62,10 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
         <DialogHeader>
           <DialogTitle className="text-amber-500 flex items-center gap-2 text-2xl">
             <Rocket className="h-6 w-6" />
-            Welcome to Space Traders
+            Welcome to Spice Traders
           </DialogTitle>
           <DialogDescription>
-            Begin your journey across the stars. You'll receive:
+            Begin your journey across the stars. You&apos;ll receive:
           </DialogDescription>
         </DialogHeader>
 

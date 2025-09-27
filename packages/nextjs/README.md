@@ -1,4 +1,4 @@
-# Space Traders Frontend
+# Spice Traders Frontend
 
 Mobile-first space trading game built on Base blockchain.
 

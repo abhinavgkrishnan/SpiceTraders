@@ -9,7 +9,7 @@ export const config = createConfig(
       [base.id]: http(),
     },
     walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "",
-    appName: "Space Traders",
+    appName: "Spice Traders",
     appDescription: "A space trading game on Base",
     appUrl: "https://spacetraders.game",
     appIcon: "https://spacetraders.game/icon.png",

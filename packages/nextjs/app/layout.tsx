@@ -6,7 +6,7 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Space Traders",
+  title: "Spice Traders",
   description: "A space trading game on Base blockchain",
 };
 
