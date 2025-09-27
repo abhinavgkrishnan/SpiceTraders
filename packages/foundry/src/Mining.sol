@@ -62,7 +62,7 @@ contract Mining is Ownable, ReentrancyGuard, IEntropyConsumer {
         Ships.ShipAttributes memory ship = shipsContract.getShipAttributes(shipId);
         require(ship.active, "Ship is not active");
 
-        // PRODUCTION: Uncomment for real Pyth Entropy
+        // PRODUCTION: Real Pyth Entropy
         // uint256 fee = entropy.getFeeV2();
         // require(msg.value >= fee, "Insufficient fee for entropy request");
         // uint64 sequenceNumber = entropy.requestV2{value: fee}();
@@ -86,7 +86,7 @@ contract Mining is Ownable, ReentrancyGuard, IEntropyConsumer {
         // TODO: Fix authorization for Mining contract to call this
         // playerContract.updateLastActionTimestamp(player);
 
-        // TESTING: No sequence number or fee for pseudo-random
+        // PRODUCTION: Emit event and refund excess fee
         // emit MiningRequested(player, planetId, sequenceNumber);
         // if (msg.value > fee) {
         //     payable(player).transfer(msg.value - fee);
@@ -114,32 +114,34 @@ contract Mining is Ownable, ReentrancyGuard, IEntropyConsumer {
         uint256[] memory amounts = new uint256[](4);
         uint256 totalMinedAmount = 0;
 
-        for (uint256 i = 0; i < 4; i++) {
-            uint256 resourceId = i; // METAL, SAPHO_JUICE, WATER, SPICE
-            uint256 concentration = planet.resourceConcentration[i];
+        unchecked {
+            for (uint256 i = 0; i < 4; ++i) {
+                uint256 resourceId = i; // METAL, SAPHO_JUICE, WATER, SPICE
+                uint256 concentration = planet.resourceConcentration[i];
 
-            uint256 minedAmount = (BASE_MINING_RATE * concentration * yieldMultiplier) / (100 * 100);
+                uint256 minedAmount = (BASE_MINING_RATE * concentration * yieldMultiplier) / (100 * 100);
 
-            // Apply base planet difficulty
-            minedAmount = (minedAmount * planet.baseMiningDifficulty) / 100;
+                // Apply base planet difficulty
+                minedAmount = (minedAmount * planet.baseMiningDifficulty) / 100;
 
-            // Apply extra difficulty for SPICE mining (resource ID 3)
-            if (resourceId == 3) { // SPICE
-                minedAmount = (minedAmount * 100) / SPICE_DIFFICULTY_MULTIPLIER;
-            }
-
-            if (minedAmount > 0) {
-                if (totalMinedAmount + minedAmount > ship.cargoCapacity) {
-                    minedAmount = ship.cargoCapacity - totalMinedAmount;
+                // Apply extra difficulty for SPICE mining (resource ID 3)
+                if (resourceId == 3) { // SPICE
+                    minedAmount = (minedAmount * 100) / SPICE_DIFFICULTY_MULTIPLIER;
                 }
 
-                resourceIds[i] = resourceId;
-                amounts[i] = minedAmount;
-                totalMinedAmount += minedAmount;
-            }
+                if (minedAmount > 0) {
+                    if (totalMinedAmount + minedAmount > ship.cargoCapacity) {
+                        minedAmount = ship.cargoCapacity - totalMinedAmount;
+                    }
 
-            if (totalMinedAmount >= ship.cargoCapacity) {
-                break;
+                    resourceIds[i] = resourceId;
+                    amounts[i] = minedAmount;
+                    totalMinedAmount += minedAmount;
+                }
+
+                if (totalMinedAmount >= ship.cargoCapacity) {
+                    break;
+                }
             }
         }
 

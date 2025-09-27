@@ -130,7 +130,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         return tokenId;
     }
 
-    function mintStarterShip(address to, string memory shipName) external onlyAuthorizedMinter returns (uint256) {
+    function mintStarterShip(address to, string calldata shipName) external onlyAuthorizedMinter returns (uint256) {
         require(bytes(shipName).length > 0, "Ship name cannot be empty");
 
         uint256 tokenId = _nextTokenId++;
@@ -153,7 +153,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         return tokenId;
     }
 
-    function buyShip(string memory shipName, uint256 shipClass) external returns (uint256) {
+    function buyShip(string calldata shipName, uint256 shipClass) external returns (uint256) {
         require(shipClass <= 3, "Invalid ship class");
         require(bytes(shipName).length > 0, "Ship name cannot be empty");
 
@@ -200,7 +200,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         emit SpiceUpdated(tokenId, newSpiceAmount);
     }
 
-    function updateShipName(uint256 tokenId, string memory newName) external {
+    function updateShipName(uint256 tokenId, string calldata newName) external {
         require(ownerOf(tokenId) == msg.sender, "Not the ship owner");
         require(bytes(newName).length > 0, "Ship name cannot be empty");
 
@@ -220,6 +220,22 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         return ships[tokenId];
     }
 
+    function getShipSpice(uint256 tokenId) external view returns (uint256) {
+        require(_ownerOf(tokenId) != address(0), "Ship does not exist");
+        return ships[tokenId].currentSpice;
+    }
+
+    function getShipSpeed(uint256 tokenId) external view returns (uint256) {
+        require(_ownerOf(tokenId) != address(0), "Ship does not exist");
+        return ships[tokenId].speed;
+    }
+
+    function getShipCapacities(uint256 tokenId) external view returns (uint256 cargo, uint256 spiceCapacity, uint256 currentSpice) {
+        require(_ownerOf(tokenId) != address(0), "Ship does not exist");
+        ShipAttributes memory ship = ships[tokenId];
+        return (ship.cargoCapacity, ship.spiceCapacity, ship.currentSpice);
+    }
+
     function getShipsByOwner(address owner) external view returns (uint256[] memory) {
         uint256 balance = balanceOf(owner);
         uint256[] memory tokenIds = new uint256[](balance);
@@ -231,7 +247,7 @@ contract Ships is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
         return tokenIds;
     }
 
-    function setBaseURI(string memory baseURI) external onlyOwner {
+    function setBaseURI(string calldata baseURI) external onlyOwner {
         _baseTokenURI = baseURI;
     }
 

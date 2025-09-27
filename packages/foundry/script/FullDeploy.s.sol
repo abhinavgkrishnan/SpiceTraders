@@ -67,7 +67,7 @@ contract FullDeployScript is Script {
         World world = new World(deployer);
         console.log("World:", address(world));
 
-        Player player = new Player(deployer, address(world), address(ships), address(credits));
+        Player player = new Player(deployer, address(world), address(ships), address(credits), address(tokens));
         console.log("Player:", address(player));
 
         Mining mining = new Mining(deployer, address(tokens), address(player), address(world), address(ships), entropyAddress);
