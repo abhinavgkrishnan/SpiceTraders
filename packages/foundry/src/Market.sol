@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -14,6 +15,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {SafeCallback} from "v4-periphery/base/SafeCallback.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import "./Player.sol";
 import "./Tokens.sol";
 import "./Credits.sol";
@@ -25,7 +27,7 @@ import "./ResourceWrapper.sol";
  * Architecture: 5 planets × 4 resources = 20 trading pairs (Resource/Credits)
  * Each planet has 4 pools: wMETAL/Credits, wSAPHO/Credits, wWATER/Credits, wSPICE/Credits
  */
-contract Market is Ownable, ReentrancyGuard, SafeCallback {
+contract Market is Ownable, ReentrancyGuard, SafeCallback, IERC1155Receiver {
     using PoolIdLibrary for PoolKey;
 
     Player public playerContract;
@@ -179,38 +181,26 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback {
     }
 
     /**
-     * @dev Add liquidity to a planet's resource/credits pool
+     * @dev Add liquidity using wrapped ERC20 tokens (wMETAL + Credits)
      */
     function addLiquidity(
         uint256 planetId,
         uint256 resourceId,
         int24 tickLower,
         int24 tickUpper,
-        uint256 resourceAmount,
+        uint256 wrappedAmount,
         uint256 creditsAmount,
         uint256 slippageTolerance
     ) external nonReentrant validPlanet(planetId) validResource(resourceId) returns (uint256 positionId) {
         TradingPair storage pair = planetMarkets[planetId][resourceId];
         require(pair.isInitialized, "Trading pair not initialized");
 
-        // Wrap resources automatically
-        tokensContract.safeTransferFrom(
-            msg.sender,
-            address(this),
-            resourceId,
-            resourceAmount,
-            ""
-        );
-
-        // Approve wrapper to spend our tokens
-        tokensContract.setApprovalForAll(address(pair.wrappedResource), true);
-        pair.wrappedResource.wrap(resourceAmount);
-
-        // Transfer credits
+        // Transfer wrapped tokens and credits from user
+        IERC20(address(pair.wrappedResource)).transferFrom(msg.sender, address(this), wrappedAmount);
         creditsContract.transferFrom(msg.sender, address(this), creditsAmount);
 
-        // Approve PoolManager to spend wrapped tokens and credits
-        IERC20(address(pair.wrappedResource)).approve(address(poolManager), resourceAmount);
+        // Approve PoolManager to spend tokens
+        IERC20(address(pair.wrappedResource)).approve(address(poolManager), wrappedAmount);
         creditsContract.approve(address(poolManager), creditsAmount);
 
         // Add liquidity through unlock callback
@@ -222,7 +212,7 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback {
             ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickUpper,
-                liquidityDelta: int256(_calculateLiquidity(resourceAmount, creditsAmount, tickLower, tickUpper)),
+                liquidityDelta: int256(_calculateLiquidity(wrappedAmount, creditsAmount, tickLower, tickUpper)),
                 salt: bytes32(uint256(positionId))
             }),
             msg.sender,
@@ -233,7 +223,7 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback {
 
         poolManager.unlock(unlockData);
 
-        emit LiquidityAdded(msg.sender, positionId, planetId, resourceId, uint128(_calculateLiquidity(resourceAmount, creditsAmount, tickLower, tickUpper)));
+        emit LiquidityAdded(msg.sender, positionId, planetId, resourceId, uint128(_calculateLiquidity(wrappedAmount, creditsAmount, tickLower, tickUpper)));
     }
 
     /**
@@ -375,7 +365,7 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback {
             SwapParams({
                 zeroForOne: zeroForOne,
                 amountSpecified: int256(amountIn),
-                sqrtPriceLimitX96: 0
+                sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             }),
             msg.sender,
             outputToken,
@@ -542,7 +532,9 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback {
                 uint256 minAmountOut
             ) = abi.decode(data, (string, PoolKey, SwapParams, address, address, uint256));
 
-            BalanceDelta delta = poolManager.swap(key, params, "");
+            // Pass user address to hook for location validation
+            bytes memory hookData = abi.encode(user);
+            BalanceDelta delta = poolManager.swap(key, params, hookData);
 
             // Handle negative deltas (we owe tokens to pool)
             if (delta.amount0() < 0) {
@@ -598,7 +590,21 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback {
         uint256,
         uint256,
         bytes memory
-    ) public pure returns (bytes4) {
-        return this.onERC1155Received.selector;
+    ) public pure override returns (bytes4) {
+        return IERC1155Receiver.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(
+        address,
+        address,
+        uint256[] memory,
+        uint256[] memory,
+        bytes memory
+    ) public pure override returns (bytes4) {
+        return IERC1155Receiver.onERC1155BatchReceived.selector;
+    }
+
+    function supportsInterface(bytes4 interfaceId) public pure returns (bool) {
+        return interfaceId == type(IERC1155Receiver).interfaceId;
     }
 }
