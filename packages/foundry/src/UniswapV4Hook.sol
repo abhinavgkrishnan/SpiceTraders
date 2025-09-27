@@ -12,18 +12,22 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./Mining.sol";
 import "./Player.sol";
 
+// Interface for Market contract planet requirements
+interface IMarketRegistry {
+    function getPoolPlanetRequirement(PoolKey calldata key) external view returns (uint256);
+}
+
 contract UniswapV4Hook is BaseHook {
     address public owner;
     Mining public miningContract;
     Player public playerContract;
+    IMarketRegistry public marketRegistry;
 
-    // Map pool keys to planet IDs for location validation
-    mapping(bytes32 => uint256) public poolToPlanet;
-
-    constructor(IPoolManager _poolManager, address _miningContract, address _playerContract) BaseHook(_poolManager) {
+    constructor(IPoolManager _poolManager, address _miningContract, address _playerContract, address _marketRegistry) BaseHook(_poolManager) {
         owner = msg.sender;
         miningContract = Mining(_miningContract);
         playerContract = Player(_playerContract);
+        marketRegistry = IMarketRegistry(_marketRegistry);
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -45,26 +49,22 @@ contract UniswapV4Hook is BaseHook {
         });
     }
 
-    // Set which planet a pool belongs to for location validation
-    function setPoolPlanet(PoolKey memory key, uint256 planetId) external {
-        require(msg.sender == owner, "Not owner");
-        bytes32 poolHash = keccak256(abi.encode(key));
-        poolToPlanet[poolHash] = planetId;
-    }
-
     function _beforeSwap(
         address sender,
         PoolKey calldata key,
         SwapParams calldata,
-        bytes calldata
+        bytes calldata hookData
     ) internal view override returns (bytes4, BeforeSwapDelta, uint24) {
-        // Check if this pool requires location validation
-        bytes32 poolHash = keccak256(abi.encode(key));
-        uint256 requiredPlanet = poolToPlanet[poolHash];
+        // Query the market registry for planet requirements
+        uint256 requiredPlanet = marketRegistry.getPoolPlanetRequirement(key);
 
         if (requiredPlanet > 0) {
-            // Validate player is on the correct planet
-            uint256 playerLocation = playerContract.getPlayerLocation(sender);
+            // Decode the actual user address from hookData (passed by Market contract)
+            address actualUser = abi.decode(hookData, (address));
+
+            // Validate player is registered and on the correct planet
+            require(playerContract.isPlayerRegistered(actualUser), "Player not registered");
+            uint256 playerLocation = playerContract.getPlayerLocation(actualUser);
             require(playerLocation == requiredPlanet, "Player not on required planet for this market");
         }
 
