@@ -24,7 +24,7 @@ import { Rocket, MapPin, Coins, ChevronDown, Fuel } from "lucide-react";
 const SHIP_CLASS_NAMES = ["Scout", "Frigate", "Harvester", "Dreadnought"];
 
 export function HUD() {
-  const { currentPlanetId, activeShipId, isTraveling, destinationPlanetId, refetch: refetchPlayer } =
+  const { currentPlanetId, activeShipId, isTraveling, travelTimeRemaining, destinationPlanetId, refetch: refetchPlayer } =
     usePlayerState();
   const { credits, metal, sapho, water, spice, refetchAll } = useBalances();
   const { ship } = useShipDetails(activeShipId);
@@ -224,8 +224,10 @@ export function HUD() {
           <MapPin className="h-4 w-4 text-amber-400" />
           <span className="text-muted-foreground">Location:</span>
           <span className="text-foreground font-medium">
-            {isTraveling
-              ? `En route to ${PLANET_NAMES[destinationPlanetId]}`
+            {isTraveling && travelTimeRemaining > 0
+              ? `En route to ${PLANET_NAMES[destinationPlanetId] || "Unknown"} (${travelTimeRemaining}s)`
+              : isTraveling && travelTimeRemaining === 0
+              ? `Arrived at ${PLANET_NAMES[destinationPlanetId] || "Unknown"}`
               : PLANET_NAMES[currentPlanetId] || "Unknown"}
           </span>
         </div>

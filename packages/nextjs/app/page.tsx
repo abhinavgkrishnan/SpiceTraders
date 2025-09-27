@@ -15,16 +15,16 @@ import { Rocket } from "lucide-react";
 
 export default function Home() {
   const { address, isConnected } = useAccount();
-  const { isRegistered, isLoading, refetch } = usePlayerState();
+  const { isRegistered, isLoading, hasError, refetch } = usePlayerState();
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
-    if (isConnected && !isLoading && !isRegistered) {
+    if (isConnected && !isLoading && !isRegistered && !hasError) {
       setShowOnboarding(true);
     } else {
       setShowOnboarding(false);
     }
-  }, [isConnected, isLoading, isRegistered]);
+  }, [isConnected, isLoading, isRegistered, hasError]);
 
   const handleOnboardingSuccess = () => {
     setShowOnboarding(false);

@@ -19,6 +19,16 @@ export function useMining() {
     },
   });
 
+  const { data: miningFee } = useReadContract({
+    address: CONTRACTS.Mining,
+    abi: MiningABI,
+    functionName: "getMiningFee",
+    query: {
+      enabled: true,
+      refetchInterval: 30000,
+    },
+  });
+
   useEffect(() => {
     if (!lastMiningTimestamp) return;
 
@@ -39,11 +49,13 @@ export function useMining() {
   const mine = async () => {
     if (!address) throw new Error("No wallet connected");
     if (cooldownRemaining > 0) throw new Error("Mining cooldown active");
+    if (!miningFee) throw new Error("Mining fee not loaded");
 
     const hash = await writeContractAsync({
       address: CONTRACTS.Mining,
       abi: MiningABI,
       functionName: "mine",
+      value: miningFee as bigint,
     });
 
     return hash;

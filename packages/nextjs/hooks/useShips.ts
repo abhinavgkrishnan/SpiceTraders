@@ -1,6 +1,6 @@
 import { useReadContract, useWriteContract, useAccount } from "wagmi";
 import { CONTRACTS } from "@/constants/contracts";
-import { ShipsABI, PlayerABI } from "@/constants/abis";
+import { ShipsABI, PlayerABI, TokensABI } from "@/constants/abis";
 
 export function useOwnedShips() {
   const { address } = useAccount();
@@ -65,6 +65,19 @@ export function useRefuelShip() {
   const { writeContractAsync, isPending } = useWriteContract();
 
   const refuel = async (shipId: number, spiceAmount: number) => {
+    // First approve Player contract to burn tokens if not already approved
+    try {
+      await writeContractAsync({
+        address: CONTRACTS.Tokens,
+        abi: TokensABI,
+        functionName: "setApprovalForAll",
+        args: [CONTRACTS.Player, true],
+      });
+    } catch (error) {
+      // Might already be approved, continue
+    }
+
+    // Then refuel
     const hash = await writeContractAsync({
       address: CONTRACTS.Player,
       abi: PlayerABI,

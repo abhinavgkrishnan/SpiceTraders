@@ -27,7 +27,7 @@ import { PLANET_NAMES } from "@/constants/contracts";
 import { Rocket, MapPin, Fuel, Clock } from "lucide-react";
 
 export function TravelCard() {
-  const { currentPlanetId, activeShipId, isTraveling, travelEndTime } =
+  const { currentPlanetId, activeShipId, isTraveling, travelTimeRemaining } =
     usePlayerState();
   const { planets } = usePlanets();
   const { ship } = useShipDetails(activeShipId);
@@ -82,8 +82,7 @@ export function TravelCard() {
     }
   };
 
-  const timeRemaining = Math.max(0, travelEndTime - Math.floor(Date.now() / 1000));
-  const canComplete = isTraveling && timeRemaining === 0;
+  const canComplete = isTraveling && travelTimeRemaining === 0;
 
   return (
     <Card className="border-amber-900/50">
@@ -96,7 +95,7 @@ export function TravelCard() {
           <CardDescription className="text-amber-400">
             {canComplete
               ? "Arrival complete - dock at station"
-              : `Arriving in ${timeRemaining}s`}
+              : `Arriving in ${travelTimeRemaining}s`}
           </CardDescription>
         )}
       </CardHeader>

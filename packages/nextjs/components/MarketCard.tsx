@@ -60,7 +60,7 @@ export function MarketCard() {
   };
 
   const handleTrade = async () => {
-    if (!selectedResource || !amountIn || Number(amountIn) <= 0) return;
+    if (selectedResource === null || !amountIn || Number(amountIn) <= 0) return;
 
     try {
       await executeTrade(currentPlanetId, selectedResource, sellMode, amountIn, 5);

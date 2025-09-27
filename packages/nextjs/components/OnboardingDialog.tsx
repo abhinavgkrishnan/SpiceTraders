@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useWriteContract, useAccount } from "wagmi";
+import { useState, useEffect } from "react";
+import { useWriteContract, useAccount, useWaitForTransactionReceipt } from "wagmi";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,8 @@ interface OnboardingDialogProps {
 
 export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
   const { address } = useAccount();
-  const { writeContractAsync, isPending } = useWriteContract();
+  const { writeContractAsync, data: hash, isPending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const { toast } = useToast();
   const [shipName, setShipName] = useState("");
 
@@ -32,7 +33,7 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
     if (!address || !shipName.trim()) return;
 
     try {
-      await writeContractAsync({
+      const txHash = await writeContractAsync({
         address: CONTRACTS.Player,
         abi: PlayerABI,
         functionName: "onboardNewPlayer",
@@ -40,13 +41,9 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
       });
 
       toast({
-        title: "Welcome, Commander!",
-        description: `${shipName} is ready for duty`,
+        title: "Transaction Submitted",
+        description: "Waiting for confirmation...",
       });
-
-      setTimeout(() => {
-        onSuccess();
-      }, 2000);
     } catch (error: any) {
       toast({
         title: "Onboarding Failed",
@@ -55,6 +52,19 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
       });
     }
   };
+
+  // Watch for transaction success
+  useEffect(() => {
+    if (isSuccess && hash) {
+      toast({
+        title: "Welcome, Commander!",
+        description: `${shipName} is ready for duty`,
+      });
+      setTimeout(() => {
+        onSuccess();
+      }, 1000);
+    }
+  }, [isSuccess, hash, shipName, onSuccess, toast]);
 
   return (
     <Dialog open={open}>
@@ -107,11 +117,11 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
         <DialogFooter>
           <Button
             onClick={handleOnboard}
-            disabled={!shipName.trim() || isPending}
+            disabled={!shipName.trim() || isPending || isConfirming}
             size="lg"
             className="w-full"
           >
-            {isPending ? "Initializing..." : "Begin Journey"}
+            {isPending ? "Confirming in wallet..." : isConfirming ? "Waiting for confirmation..." : "Begin Journey"}
           </Button>
         </DialogFooter>
       </DialogContent>
