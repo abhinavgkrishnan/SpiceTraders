@@ -50,7 +50,7 @@ contract UniswapV4Hook is BaseHook {
     }
 
     function _beforeSwap(
-        address sender,
+        address /* sender */,
         PoolKey calldata key,
         SwapParams calldata,
         bytes calldata hookData

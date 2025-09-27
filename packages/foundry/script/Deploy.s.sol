@@ -83,7 +83,7 @@ contract DeployScript is Script {
         World world = new World(deployer);
         console.log("World (Planets) deployed to:", address(world));
 
-        Player player = new Player(deployer, address(world), address(ships), address(credits));
+        Player player = new Player(deployer, address(world), address(ships), address(credits), address(tokens));
         console.log("Player (Registration/Travel) deployed to:", address(player));
 
         Mining mining = new Mining(

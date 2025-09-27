@@ -10,7 +10,7 @@ contract Credits is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     mapping(address => bool) public authorizedMinters;
 
     uint256 public constant STARTER_AMOUNT = 1500 * 10**18; // 1500 Solaris for new players
-    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18; // 1 billion Solaris max
+    uint256 public constant MAX_SUPPLY = 2_000_000_000 * 10**18; // 2 billion Solaris max
 
     event AuthorizedMinterSet(address indexed minter, bool authorized);
 

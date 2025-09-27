@@ -190,7 +190,7 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback, IERC1155Receiver {
         int24 tickUpper,
         uint256 wrappedAmount,
         uint256 creditsAmount,
-        uint256 slippageTolerance
+        uint256 /* slippageTolerance */
     ) external nonReentrant validPlanet(planetId) validResource(resourceId) returns (uint256 positionId) {
         TradingPair storage pair = planetMarkets[planetId][resourceId];
         require(pair.isInitialized, "Trading pair not initialized");
@@ -386,8 +386,8 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback, IERC1155Receiver {
     function _calculateLiquidity(
         uint256 amount0,
         uint256 amount1,
-        int24 tickLower,
-        int24 tickUpper
+        int24 /* tickLower */,
+        int24 /* tickUpper */
     ) internal pure returns (uint256) {
         // Simplified liquidity calculation
         // In production, this would use proper Uniswap v4 math
@@ -398,8 +398,8 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback, IERC1155Receiver {
      * @dev Calculate quote for a trade (placeholder)
      */
     function _calculateQuote(
-        PoolKey memory poolKey,
-        bool resourceToCredits,
+        PoolKey memory /* poolKey */,
+        bool /* resourceToCredits */,
         uint256 amountIn
     ) internal pure returns (uint256) {
         // Placeholder quote calculation
@@ -506,7 +506,7 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback, IERC1155Receiver {
                 PoolKey memory key,
                 ModifyLiquidityParams memory params,
                 address owner,
-                uint256 positionId
+                /* uint256 positionId */
             ) = abi.decode(data, (string, PoolKey, ModifyLiquidityParams, address, uint256));
 
             (BalanceDelta delta,) = poolManager.modifyLiquidity(key, params, "");
@@ -528,8 +528,8 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback, IERC1155Receiver {
                 PoolKey memory key,
                 SwapParams memory params,
                 address user,
-                address outputToken,
-                uint256 minAmountOut
+                /* address outputToken */,
+                /* uint256 minAmountOut */
             ) = abi.decode(data, (string, PoolKey, SwapParams, address, address, uint256));
 
             // Pass user address to hook for location validation
