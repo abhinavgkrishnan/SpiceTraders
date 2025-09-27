@@ -139,15 +139,16 @@ contract FullDeployScript is Script {
         console.log("\n=== ADDING HIGH LIQUIDITY TO ALL 20 POOLS ===");
 
         // Liquidity configuration [resourceAmount, creditsAmount]
-        // Reduced 100x for balanced game economy with meaningful price impact
+        // Resources as whole numbers, Credits use 18 decimals (ether)
+        // Sized to match player mining yields (~50-100 per session) with meaningful price impact
         uint256[2][4] memory baseLiquidity = [
-            [uint256(1000 ether), 10000 ether],  // Metal: 1:10
-            [uint256(800 ether), 12000 ether],   // Sapho: 1:15
-            [uint256(2000 ether), 10000 ether],  // Water: 1:5
-            [uint256(200 ether), 10000 ether]    // Spice: 1:50
+            [uint256(1000), 10000 ether],  // Metal: 1000 units → 10000 Credits (1:10 ratio)
+            [uint256(800), 12000 ether],   // Sapho: 800 units → 12000 Credits (1:15 ratio)
+            [uint256(2000), 10000 ether],  // Water: 2000 units → 10000 Credits (1:5 ratio)
+            [uint256(200), 10000 ether]    // Spice: 200 units → 10000 Credits (1:50 ratio)
         ];
 
-        credits.mint(deployer, 10000000 ether);
+        credits.mint(deployer, 1000000 ether);
         console.log("Minted 10M credits for liquidity");
 
         wrapperIndex = 0;

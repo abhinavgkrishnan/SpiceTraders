@@ -63,34 +63,30 @@ contract Mining is Ownable, ReentrancyGuard, IEntropyConsumer {
         require(ship.active, "Ship is not active");
 
         // PRODUCTION: Real Pyth Entropy
-        // uint256 fee = entropy.getFeeV2();
-        // require(msg.value >= fee, "Insufficient fee for entropy request");
-        // uint64 sequenceNumber = entropy.requestV2{value: fee}();
-        // sequenceToPlayer[sequenceNumber] = player;
-        // sequenceToPlanet[sequenceNumber] = planetId;
-        // sequenceToShip[sequenceNumber] = shipId;
-
-        // TESTING: Pseudo-random for local development
-        bytes32 pseudoRandom = keccak256(abi.encodePacked(
-            block.timestamp,
-            block.prevrandao,
-            player,
-            planetId,
-            shipId
-        ));
-
-        // Process mining immediately with pseudo-random for testing
-        _processMining(player, planetId, shipId, pseudoRandom);
+        uint256 fee = entropy.getFeeV2();
+        require(msg.value >= fee, "Insufficient fee for entropy request");
+        uint64 sequenceNumber = entropy.requestV2{value: fee}();
+        sequenceToPlayer[sequenceNumber] = player;
+        sequenceToPlanet[sequenceNumber] = planetId;
+        sequenceToShip[sequenceNumber] = shipId;
 
         lastMiningTimestamp[player] = block.timestamp;
-        // TODO: Fix authorization for Mining contract to call this
-        // playerContract.updateLastActionTimestamp(player);
 
-        // PRODUCTION: Emit event and refund excess fee
-        // emit MiningRequested(player, planetId, sequenceNumber);
-        // if (msg.value > fee) {
-        //     payable(player).transfer(msg.value - fee);
-        // }
+        // Emit event and refund excess fee
+        emit MiningRequested(player, planetId, sequenceNumber);
+        if (msg.value > fee) {
+            payable(player).transfer(msg.value - fee);
+        }
+
+        // TESTING: Pseudo-random for local development (COMMENTED OUT FOR PRODUCTION)
+        // bytes32 pseudoRandom = keccak256(abi.encodePacked(
+        //     block.timestamp,
+        //     block.prevrandao,
+        //     player,
+        //     planetId,
+        //     shipId
+        // ));
+        // _processMining(player, planetId, shipId, pseudoRandom);
     }
 
     function setEntropyAddress(address _entropy) external onlyOwner {

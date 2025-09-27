@@ -176,7 +176,7 @@ contract Player is Ownable, ReentrancyGuard {
     function completeTravel() external {
         address player = msg.sender;
         require(isPlayerRegistered[player], "Player not registered");
-        require(isPlayerTraveling(player), "Player is not traveling");
+        require(playerStates[player].currentTripEndTime > 0, "No active travel");
         require(block.timestamp >= playerStates[player].currentTripEndTime, "Travel not yet complete");
 
         // Cache values before clearing
@@ -200,7 +200,14 @@ contract Player is Ownable, ReentrancyGuard {
 
     function getPlayerLocation(address player) external view returns (uint256 planetId) {
         require(isPlayerRegistered[player], "Player not registered");
-        return playerStates[player].currentPlanetId;
+        PlayerState memory state = playerStates[player];
+
+        // If travel is complete (time has passed), return destination
+        if (state.currentTripEndTime > 0 && block.timestamp >= state.currentTripEndTime) {
+            return state.currentTripToPlanetId;
+        }
+
+        return state.currentPlanetId;
     }
 
     function getPlayerActiveShip(address player) external view returns (uint256 shipId) {
@@ -209,7 +216,9 @@ contract Player is Ownable, ReentrancyGuard {
     }
 
     function isPlayerTraveling(address player) public view returns (bool) {
-        return playerStates[player].currentTripEndTime > 0;
+        PlayerState memory state = playerStates[player];
+        // Player is traveling if trip end time is set AND hasn't passed yet
+        return state.currentTripEndTime > 0 && block.timestamp < state.currentTripEndTime;
     }
 
     function updateLastActionTimestamp(address player) external onlyOwner {

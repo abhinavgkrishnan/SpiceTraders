@@ -90,14 +90,15 @@ contract PlayerTest is Test {
         // Fast forward time to complete travel using adjusted time cost
         vm.warp(block.timestamp + expectedAdjustedTimeCost);
 
-        // Complete travel
+        // After time passes, location should auto-update (no completeTravel() needed)
+        assertEq(player.getPlayerLocation(user), 2);
+        assertFalse(player.isPlayerTraveling(user));
+
+        // completeTravel() is optional for cleanup
         player.completeTravel();
 
-        // Verify player arrived at destination
+        // Verify still at destination after cleanup
         assertEq(player.getPlayerLocation(user), 2);
-
-        // Verify player is no longer traveling
-        assertFalse(player.isPlayerTraveling(user));
 
         vm.stopPrank();
     }
@@ -279,6 +280,38 @@ contract PlayerTest is Test {
         assertEq(ship.spiceCapacity, 5000);
         assertEq(ship.speed, 120); // 1.2x speed
         assertEq(ship.currentSpice, 5000); // New ships start with full tank
+    }
+
+    function test_AutoCompleteTravelWithoutExplicitCall() public {
+        vm.startPrank(owner);
+        uint256 shipId = ships.mintShip(user, "Test Ship", 2);
+        ships.setAuthorizedManager(address(player), true);
+        player.registerPlayer(user, 1, shipId);
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+        ships.updateSpice(shipId, 5000);
+        vm.stopPrank();
+
+        Ships.ShipAttributes memory shipBefore = ships.getShipAttributes(shipId);
+        World.TravelCost memory cost = world.getTravelCost(1, 2);
+        uint256 expectedAdjustedTimeCost = (cost.timeCost * 100) / shipBefore.speed;
+
+        vm.startPrank(user);
+        player.instantTravel(2);
+
+        // During travel: location should be 0, traveling should be true
+        assertEq(player.getPlayerLocation(user), 0);
+        assertTrue(player.isPlayerTraveling(user));
+
+        // Fast forward time past travel completion
+        vm.warp(block.timestamp + expectedAdjustedTimeCost);
+
+        // After time passes: location should auto-update to destination WITHOUT calling completeTravel()
+        assertEq(player.getPlayerLocation(user), 2);
+        assertFalse(player.isPlayerTraveling(user));
+
+        vm.stopPrank();
     }
 
     function test_SetActiveShip() public {
