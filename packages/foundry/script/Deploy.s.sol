@@ -142,7 +142,7 @@ contract DeployScript is Script {
         console.log("PoolManager deployed to:", address(poolManager));
 
         // Deploy Market first so we can pass it to the hook
-        Market market = new Market(deployer, address(player), address(tokens), address(poolManager));
+        Market market = new Market(deployer, address(player), address(tokens), address(credits), address(poolManager));
         console.log("Market deployed to:", address(market));
 
         UniswapV4Hook hook = deployHook(poolManager, address(mining), address(player), address(market));

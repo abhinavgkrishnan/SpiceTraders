@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -13,78 +14,148 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {SafeCallback} from "v4-periphery/base/SafeCallback.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./Player.sol";
 import "./Tokens.sol";
+import "./Credits.sol";
+import "./ResourceWrapper.sol";
 
+/**
+ * @title Market
+ * @dev Planet-specific trading markets with automatic ERC1155/ERC20 wrapping
+ * Architecture: 5 planets × 4 resources = 20 trading pairs (Resource/Credits)
+ * Each planet has 4 pools: wMETAL/Credits, wSAPHO/Credits, wWATER/Credits, wSPICE/Credits
+ */
 contract Market is Ownable, ReentrancyGuard, SafeCallback {
     using PoolIdLibrary for PoolKey;
 
     Player public playerContract;
     Tokens public tokensContract;
+    Credits public creditsContract;
 
-    struct Trade {
-        address trader;
-        uint256 fromTokenId;
-        uint256 toTokenId;
-        uint256 fromAmount;
-        uint256 toAmount;
-        uint256 timestamp;
+    // Resource IDs from Tokens.sol
+    uint256 public constant METAL = 0;
+    uint256 public constant SAPHO_JUICE = 1;
+    uint256 public constant WATER = 2;
+    uint256 public constant SPICE = 3;
+
+    // Planet IDs (1-5)
+    uint256 public constant CALADAN = 1;
+    uint256 public constant ARRAKIS = 2;
+    uint256 public constant GIEDI_PRIME = 3;
+    uint256 public constant IX = 4;
+    uint256 public constant KAITAIN = 5;
+
+    struct LiquidityPosition {
+        address owner;
+        uint256 planetId;
+        uint256 resourceId;
+        int24 tickLower;
+        int24 tickUpper;
+        uint128 liquidity;
+        uint256 positionId;
+        bool isActive;
     }
 
-    // Planet-specific markets (Uniswap V4 pools)
-    mapping(uint256 => PoolId) public planetMarkets;
+    struct TradingPair {
+        PoolKey poolKey;
+        PoolId poolId;
+        ResourceWrapper wrappedResource;
+        bool isInitialized;
+    }
 
-    // Store pool configurations for each planet
-    mapping(uint256 => PoolKey) public planetPoolKeys;
+    // Maps planet ID => resource ID => trading pair
+    mapping(uint256 => mapping(uint256 => TradingPair)) public planetMarkets;
 
-    event MarketSet(uint256 indexed planetId, PoolId indexed poolId);
+    // Position management
+    mapping(address => LiquidityPosition[]) public userPositions;
+    mapping(uint256 => LiquidityPosition) public positions;
+    uint256 public nextPositionId = 1;
+
+    // Events
+    event MarketInitialized(uint256 indexed planetId, uint256 indexed resourceId, PoolId poolId);
     event TradeExecuted(
         address indexed trader,
         uint256 indexed planetId,
-        uint256 fromTokenId,
-        uint256 toTokenId,
-        uint256 fromAmount,
-        uint256 toAmount
+        uint256 resourceId,
+        bool resourceToCredits,
+        uint256 amountIn,
+        uint256 amountOut
+    );
+    event LiquidityAdded(
+        address indexed provider,
+        uint256 indexed positionId,
+        uint256 planetId,
+        uint256 resourceId,
+        uint128 liquidity
+    );
+    event LiquidityRemoved(
+        address indexed provider,
+        uint256 indexed positionId,
+        uint128 liquidity
     );
 
-    modifier atPlanetMarket() {
-        uint256 planetId = playerContract.getPlayerLocation(msg.sender);
-        require(planetId > 0, "You are not at any planet");
-        require(PoolId.unwrap(planetMarkets[planetId]) != bytes32(0), "No market at this planet");
+    modifier atPlanet(uint256 planetId) {
+        uint256 playerLocation = playerContract.getPlayerLocation(msg.sender);
+        require(playerLocation == planetId, "You are not at this planet");
         _;
     }
 
-    constructor(address initialOwner, address _playerContract, address _tokensContract, address _poolManager)
-        Ownable(initialOwner)
-        SafeCallback(IPoolManager(_poolManager))
-    {
+    modifier validPlanet(uint256 planetId) {
+        require(planetId >= 1 && planetId <= 5, "Invalid planet ID");
+        _;
+    }
+
+    modifier validResource(uint256 resourceId) {
+        require(resourceId <= 3, "Invalid resource ID");
+        _;
+    }
+
+    constructor(
+        address initialOwner,
+        address _playerContract,
+        address _tokensContract,
+        address _creditsContract,
+        address _poolManager
+    ) Ownable(initialOwner) SafeCallback(IPoolManager(_poolManager)) {
         playerContract = Player(_playerContract);
         tokensContract = Tokens(_tokensContract);
+        creditsContract = Credits(_creditsContract);
     }
 
-    function setPlanetMarket(uint256 planetId, PoolId poolId) external onlyOwner {
-        require(planetId > 0, "Invalid planet ID");
-        planetMarkets[planetId] = poolId;
-        emit MarketSet(planetId, poolId);
-    }
-
-    function createAndInitializePlanetPool(
+    /**
+     * @dev Initialize a trading pair for a specific planet and resource
+     */
+    function initializeTradingPair(
         uint256 planetId,
-        Currency currency0,
-        Currency currency1,
+        uint256 resourceId,
+        address wrappedResourceAddress,
         uint24 fee,
         int24 tickSpacing,
         address hookContract,
         uint160 sqrtPriceX96
-    ) external onlyOwner returns (PoolKey memory key) {
-        require(planetId > 0, "Invalid planet ID");
+    ) external onlyOwner validPlanet(planetId) validResource(resourceId) {
+        require(
+            !planetMarkets[planetId][resourceId].isInitialized,
+            "Trading pair already initialized"
+        );
 
-        // Ensure currencies are sorted
-        require(Currency.unwrap(currency0) < Currency.unwrap(currency1), "Currencies not sorted");
+        ResourceWrapper wrappedResource = ResourceWrapper(wrappedResourceAddress);
+        require(wrappedResource.resourceId() == resourceId, "Resource ID mismatch");
 
-        // Create the pool key
-        key = PoolKey({
+        // Ensure currencies are sorted (Credits < WrappedResource typically)
+        Currency currency0;
+        Currency currency1;
+
+        if (address(creditsContract) < wrappedResourceAddress) {
+            currency0 = Currency.wrap(address(creditsContract));
+            currency1 = Currency.wrap(wrappedResourceAddress);
+        } else {
+            currency0 = Currency.wrap(wrappedResourceAddress);
+            currency1 = Currency.wrap(address(creditsContract));
+        }
+
+        // Create pool key
+        PoolKey memory poolKey = PoolKey({
             currency0: currency0,
             currency1: currency1,
             fee: fee,
@@ -93,164 +164,329 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback {
         });
 
         // Initialize the pool
-        poolManager.initialize(key, sqrtPriceX96);
+        poolManager.initialize(poolKey, sqrtPriceX96);
 
-        // Store the pool configuration
-        planetPoolKeys[planetId] = key;
+        // Store trading pair
+        PoolId poolId = poolKey.toId();
+        planetMarkets[planetId][resourceId] = TradingPair({
+            poolKey: poolKey,
+            poolId: poolId,
+            wrappedResource: wrappedResource,
+            isInitialized: true
+        });
 
-        // Calculate and store the pool ID
-        PoolId poolId = key.toId();
-        planetMarkets[planetId] = poolId;
-
-        emit MarketSet(planetId, poolId);
-
-        return key;
+        emit MarketInitialized(planetId, resourceId, poolId);
     }
 
-    function getPoolKeyForPlanet(uint256 planetId) public view returns (PoolKey memory) {
-        require(planetId > 0, "Invalid planet ID");
-        PoolKey memory key = planetPoolKeys[planetId];
-        require(Currency.unwrap(key.currency0) != address(0), "Pool not configured for planet");
-        return key;
-    }
-
-    function executeTrade(
-        address fromToken, // ERC20 wrapped token address
-        address toToken,   // ERC20 wrapped token address
-        uint256 fromAmount,
-        uint256 slippageTolerance, // e.g., 50 for 0.5%
-        bytes calldata hookData
-    ) external nonReentrant atPlanetMarket returns (BalanceDelta delta) {
-        uint256 planetId = playerContract.getPlayerLocation(msg.sender);
-
-        // Get the pool key for this planet's market
-        PoolKey memory key = getPoolKeyForPlanet(planetId);
-
-        // Verify the tokens match the pool currencies
-        require(
-            (fromToken == Currency.unwrap(key.currency0) && toToken == Currency.unwrap(key.currency1)) ||
-            (fromToken == Currency.unwrap(key.currency1) && toToken == Currency.unwrap(key.currency0)),
-            "Tokens don't match pool currencies"
-        );
-
-        // Determine swap direction
-        bool zeroForOne = fromToken == Currency.unwrap(key.currency0);
-
-        // Transfer tokens from user to this contract for the swap
-        IERC20(fromToken).transferFrom(msg.sender, address(this), fromAmount);
-
-        // Approve PoolManager to spend our tokens
-        IERC20(fromToken).approve(address(poolManager), fromAmount);
-
-        // Execute the swap via unlock callback
-        bytes memory swapHookData = abi.encode(msg.sender); // Pass real user address to hook
-        bytes memory unlockData = abi.encode(
-            "swap",
-            key,
-            SwapParams({
-                zeroForOne: zeroForOne,
-                amountSpecified: int256(fromAmount),
-                sqrtPriceLimitX96: 0 // No price limit
-            }),
-            swapHookData,
-            msg.sender,
-            toToken
-        );
-
-        delta = BalanceDelta.wrap(abi.decode(poolManager.unlock(unlockData), (int256)));
-
-        // Validate slippage protection
-        _validateSlippage(delta, fromAmount, slippageTolerance);
-
-        emit TradeExecuted(msg.sender, planetId, 0, 1, fromAmount, uint256(uint128(-delta.amount1())));
-
-        playerContract.updateLastActionTimestamp(msg.sender);
-
-        return delta;
-    }
-
-    function _validateSlippage(
-        BalanceDelta delta,
-        uint256 fromAmount,
-        uint256 slippageTolerance
-    ) internal pure {
-        int128 amountOut = delta.amount1();
-        uint256 expectedAmountOut = (fromAmount * 995) / 1000; // Example placeholder logic
-        uint256 minAmountOut = (expectedAmountOut * (10000 - slippageTolerance)) / 10000;
-        require(uint256(uint128(-amountOut)) >= minAmountOut, "Slippage tolerance exceeded");
-    }
-
-    // Add initial liquidity to planet pools (admin only)
-    function addInitialLiquidity(
+    /**
+     * @dev Add liquidity to a planet's resource/credits pool
+     */
+    function addLiquidity(
         uint256 planetId,
+        uint256 resourceId,
         int24 tickLower,
         int24 tickUpper,
-        uint256 liquidity
-    ) external onlyOwner nonReentrant {
-        require(planetId > 0, "Invalid planet ID");
-        PoolKey memory key = getPoolKeyForPlanet(planetId);
+        uint256 resourceAmount,
+        uint256 creditsAmount,
+        uint256 slippageTolerance
+    ) external nonReentrant validPlanet(planetId) validResource(resourceId) returns (uint256 positionId) {
+        TradingPair storage pair = planetMarkets[planetId][resourceId];
+        require(pair.isInitialized, "Trading pair not initialized");
+
+        // Wrap resources automatically
+        tokensContract.safeTransferFrom(
+            msg.sender,
+            address(this),
+            resourceId,
+            resourceAmount,
+            ""
+        );
+
+        // Approve wrapper to spend our tokens
+        tokensContract.setApprovalForAll(address(pair.wrappedResource), true);
+        pair.wrappedResource.wrap(resourceAmount);
+
+        // Transfer credits
+        creditsContract.transferFrom(msg.sender, address(this), creditsAmount);
+
+        // Approve PoolManager to spend wrapped tokens and credits
+        IERC20(address(pair.wrappedResource)).approve(address(poolManager), resourceAmount);
+        creditsContract.approve(address(poolManager), creditsAmount);
+
+        // Add liquidity through unlock callback
+        positionId = nextPositionId++;
 
         bytes memory unlockData = abi.encode(
             "addLiquidity",
-            key,
+            pair.poolKey,
             ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickUpper,
-                liquidityDelta: int256(liquidity),
-                salt: bytes32(0)
-            })
+                liquidityDelta: int256(_calculateLiquidity(resourceAmount, creditsAmount, tickLower, tickUpper)),
+                salt: bytes32(uint256(positionId))
+            }),
+            msg.sender,
+            positionId,
+            planetId,
+            resourceId
         );
 
         poolManager.unlock(unlockData);
+
+        emit LiquidityAdded(msg.sender, positionId, planetId, resourceId, uint128(_calculateLiquidity(resourceAmount, creditsAmount, tickLower, tickUpper)));
     }
 
-    // Get planet requirement for a specific pool (used by hook)
+    /**
+     * @dev Remove liquidity from a position
+     */
+    function removeLiquidity(
+        uint256 positionId,
+        uint128 liquidityToRemove
+    ) external nonReentrant {
+        LiquidityPosition storage position = positions[positionId];
+        require(position.owner == msg.sender, "Not position owner");
+        require(position.isActive, "Position not active");
+        require(position.liquidity >= liquidityToRemove, "Insufficient liquidity");
+
+        TradingPair storage pair = planetMarkets[position.planetId][position.resourceId];
+
+        bytes memory unlockData = abi.encode(
+            "removeLiquidity",
+            pair.poolKey,
+            ModifyLiquidityParams({
+                tickLower: position.tickLower,
+                tickUpper: position.tickUpper,
+                liquidityDelta: -int256(uint256(liquidityToRemove)),
+                salt: bytes32(positionId)
+            }),
+            msg.sender,
+            positionId
+        );
+
+        poolManager.unlock(unlockData);
+
+        position.liquidity -= liquidityToRemove;
+        if (position.liquidity == 0) {
+            position.isActive = false;
+        }
+
+        emit LiquidityRemoved(msg.sender, positionId, liquidityToRemove);
+    }
+
+    /**
+     * @dev Execute a trade with automatic wrapping/unwrapping
+     * @param planetId Planet to trade on
+     * @param resourceId Resource to trade
+     * @param resourceToCredits True if trading resource for credits, false for credits to resource
+     * @param amountIn Amount of input token
+     * @param minAmountOut Minimum amount of output token (slippage protection)
+     */
+    function executeTrade(
+        uint256 planetId,
+        uint256 resourceId,
+        bool resourceToCredits,
+        uint256 amountIn,
+        uint256 minAmountOut
+    ) external nonReentrant atPlanet(planetId) validPlanet(planetId) validResource(resourceId) returns (uint256 amountOut) {
+        TradingPair storage pair = planetMarkets[planetId][resourceId];
+        require(pair.isInitialized, "Trading pair not initialized");
+
+        if (resourceToCredits) {
+            // Trading resource for credits
+            // 1. Transfer ERC1155 from user
+            tokensContract.safeTransferFrom(msg.sender, address(this), resourceId, amountIn, "");
+
+            // 2. Wrap to ERC20
+            tokensContract.setApprovalForAll(address(pair.wrappedResource), true);
+            pair.wrappedResource.wrap(amountIn);
+
+            // 3. Execute swap
+            amountOut = _executeSwap(pair, true, amountIn, minAmountOut);
+
+            // 4. Transfer credits to user
+            creditsContract.transfer(msg.sender, amountOut);
+        } else {
+            // Trading credits for resource
+            // 1. Transfer credits from user
+            creditsContract.transferFrom(msg.sender, address(this), amountIn);
+
+            // 2. Execute swap
+            amountOut = _executeSwap(pair, false, amountIn, minAmountOut);
+
+            // 3. Unwrap ERC20 to ERC1155
+            pair.wrappedResource.unwrap(amountOut);
+
+            // 4. Transfer ERC1155 to user
+            tokensContract.safeTransferFrom(address(this), msg.sender, resourceId, amountOut, "");
+        }
+
+        playerContract.updateLastActionTimestamp(msg.sender);
+
+        emit TradeExecuted(msg.sender, planetId, resourceId, resourceToCredits, amountIn, amountOut);
+    }
+
+    /**
+     * @dev Get a quote for a trade without executing it
+     */
+    function getQuote(
+        uint256 planetId,
+        uint256 resourceId,
+        bool resourceToCredits,
+        uint256 amountIn
+    ) external view validPlanet(planetId) validResource(resourceId) returns (uint256 amountOut) {
+        TradingPair storage pair = planetMarkets[planetId][resourceId];
+        require(pair.isInitialized, "Trading pair not initialized");
+
+        // This would integrate with a quoter contract in production
+        // For now, return a placeholder that could be implemented with actual pool state
+        return _calculateQuote(pair.poolKey, resourceToCredits, amountIn);
+    }
+
+    /**
+     * @dev Internal function to execute swaps
+     */
+    function _executeSwap(
+        TradingPair storage pair,
+        bool resourceToCredits,
+        uint256 amountIn,
+        uint256 minAmountOut
+    ) internal returns (uint256 amountOut) {
+        // Determine swap direction based on currency order and trade direction
+        bool zeroForOne;
+        address inputToken;
+        address outputToken;
+
+        if (resourceToCredits) {
+            inputToken = address(pair.wrappedResource);
+            outputToken = address(creditsContract);
+            zeroForOne = (Currency.unwrap(pair.poolKey.currency0) == inputToken);
+        } else {
+            inputToken = address(creditsContract);
+            outputToken = address(pair.wrappedResource);
+            zeroForOne = (Currency.unwrap(pair.poolKey.currency0) == inputToken);
+        }
+
+        // Approve pool manager
+        IERC20(inputToken).approve(address(poolManager), amountIn);
+
+        bytes memory unlockData = abi.encode(
+            "swap",
+            pair.poolKey,
+            SwapParams({
+                zeroForOne: zeroForOne,
+                amountSpecified: int256(amountIn),
+                sqrtPriceLimitX96: 0
+            }),
+            msg.sender,
+            outputToken,
+            minAmountOut
+        );
+
+        bytes memory result = poolManager.unlock(unlockData);
+        BalanceDelta delta = BalanceDelta.wrap(abi.decode(result, (int256)));
+
+        // Calculate amount out based on delta
+        amountOut = uint256(uint128(-delta.amount1()));
+        require(amountOut >= minAmountOut, "Slippage tolerance exceeded");
+    }
+
+    /**
+     * @dev Calculate liquidity for given amounts (simplified)
+     */
+    function _calculateLiquidity(
+        uint256 amount0,
+        uint256 amount1,
+        int24 tickLower,
+        int24 tickUpper
+    ) internal pure returns (uint256) {
+        // Simplified liquidity calculation
+        // In production, this would use proper Uniswap v4 math
+        return (amount0 + amount1) / 2;
+    }
+
+    /**
+     * @dev Calculate quote for a trade (placeholder)
+     */
+    function _calculateQuote(
+        PoolKey memory poolKey,
+        bool resourceToCredits,
+        uint256 amountIn
+    ) internal pure returns (uint256) {
+        // Placeholder quote calculation
+        // In production, this would query pool state and calculate exact output
+        return (amountIn * 995) / 1000; // 0.5% fee simulation
+    }
+
+    /**
+     * @dev Get planet requirement for a pool (used by hooks)
+     */
     function getPoolPlanetRequirement(PoolKey calldata key) external view returns (uint256) {
         PoolId poolId = key.toId();
 
-        // Find which planet this pool belongs to
         for (uint256 planetId = 1; planetId <= 5; planetId++) {
-            if (PoolId.unwrap(planetMarkets[planetId]) == PoolId.unwrap(poolId)) {
-                return planetId;
+            for (uint256 resourceId = 0; resourceId <= 3; resourceId++) {
+                if (PoolId.unwrap(planetMarkets[planetId][resourceId].poolId) == PoolId.unwrap(poolId)) {
+                    return planetId;
+                }
             }
         }
-        return 0; // No planet requirement
+        return 0;
     }
 
-    // Implement the unlock callback for Uniswap V4
+    /**
+     * @dev Get user's positions
+     */
+    function getUserPositions(address user) external view returns (LiquidityPosition[] memory) {
+        return userPositions[user];
+    }
+
+    /**
+     * @dev Get trading pair info
+     */
+    function getTradingPair(uint256 planetId, uint256 resourceId) external view returns (TradingPair memory) {
+        return planetMarkets[planetId][resourceId];
+    }
+
+    /**
+     * @dev Unlock callback for Uniswap V4 operations
+     */
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        (string memory operation) = abi.decode(data, (string));
+        string memory operation = abi.decode(data, (string));
 
         if (keccak256(abi.encodePacked(operation)) == keccak256(abi.encodePacked("addLiquidity"))) {
-            (,PoolKey memory key, ModifyLiquidityParams memory params) = abi.decode(
-                data,
-                (string, PoolKey, ModifyLiquidityParams)
-            );
+            (
+                ,
+                PoolKey memory key,
+                ModifyLiquidityParams memory params,
+                address owner,
+                uint256 positionId,
+                uint256 planetId,
+                uint256 resourceId
+            ) = abi.decode(data, (string, PoolKey, ModifyLiquidityParams, address, uint256, uint256, uint256));
 
-            // Add liquidity to the pool
             (BalanceDelta delta,) = poolManager.modifyLiquidity(key, params, "");
 
-            // Handle negative deltas (PoolManager is owed tokens)
+            // Handle negative deltas (we owe tokens to pool)
             if (delta.amount0() < 0) {
-                // Transfer tokens from this contract to PoolManager and settle
-                IERC20(Currency.unwrap(key.currency0)).transferFrom(
-                    address(this),
+                // Sync, transfer, then settle
+                poolManager.sync(key.currency0);
+                IERC20(Currency.unwrap(key.currency0)).transfer(
                     address(poolManager),
                     uint256(uint128(-delta.amount0()))
                 );
                 poolManager.settle();
             }
             if (delta.amount1() < 0) {
-                // Transfer tokens from this contract to PoolManager and settle
-                IERC20(Currency.unwrap(key.currency1)).transferFrom(
-                    address(this),
+                // Sync, transfer, then settle
+                poolManager.sync(key.currency1);
+                IERC20(Currency.unwrap(key.currency1)).transfer(
                     address(poolManager),
                     uint256(uint128(-delta.amount1()))
                 );
                 poolManager.settle();
             }
 
-            // Handle positive deltas (PoolManager owes tokens)
+            // Handle positive deltas (pool owes tokens to us)
             if (delta.amount0() > 0) {
                 poolManager.take(key.currency0, address(this), uint256(uint128(delta.amount0())));
             }
@@ -258,37 +494,111 @@ contract Market is Ownable, ReentrancyGuard, SafeCallback {
                 poolManager.take(key.currency1, address(this), uint256(uint128(delta.amount1())));
             }
 
+            // Store position
+            positions[positionId] = LiquidityPosition({
+                owner: owner,
+                planetId: planetId,
+                resourceId: resourceId,
+                tickLower: params.tickLower,
+                tickUpper: params.tickUpper,
+                liquidity: uint128(uint256(params.liquidityDelta)),
+                positionId: positionId,
+                isActive: true
+            });
+            userPositions[owner].push(positions[positionId]);
+
+            return abi.encode(delta);
+        }
+
+        if (keccak256(abi.encodePacked(operation)) == keccak256(abi.encodePacked("removeLiquidity"))) {
+            (
+                ,
+                PoolKey memory key,
+                ModifyLiquidityParams memory params,
+                address owner,
+                uint256 positionId
+            ) = abi.decode(data, (string, PoolKey, ModifyLiquidityParams, address, uint256));
+
+            (BalanceDelta delta,) = poolManager.modifyLiquidity(key, params, "");
+
+            // Handle positive deltas (pool owes tokens to us)
+            if (delta.amount0() > 0) {
+                poolManager.take(key.currency0, owner, uint256(uint128(delta.amount0())));
+            }
+            if (delta.amount1() > 0) {
+                poolManager.take(key.currency1, owner, uint256(uint128(delta.amount1())));
+            }
+
             return abi.encode(delta);
         }
 
         if (keccak256(abi.encodePacked(operation)) == keccak256(abi.encodePacked("swap"))) {
-            (,PoolKey memory key, SwapParams memory params, bytes memory swapHookData, address user, address toToken) = abi.decode(
-                data,
-                (string, PoolKey, SwapParams, bytes, address, address)
-            );
+            (
+                ,
+                PoolKey memory key,
+                SwapParams memory params,
+                address user,
+                address outputToken,
+                uint256 minAmountOut
+            ) = abi.decode(data, (string, PoolKey, SwapParams, address, address, uint256));
 
-            // Execute the swap
-            BalanceDelta delta = poolManager.swap(key, params, swapHookData);
+            BalanceDelta delta = poolManager.swap(key, params, "");
 
-            // Handle negative deltas (PoolManager is owed tokens)
+            // Handle negative deltas (we owe tokens to pool)
             if (delta.amount0() < 0) {
+                // Sync, transfer, then settle
+                poolManager.sync(key.currency0);
+                IERC20(Currency.unwrap(key.currency0)).transfer(
+                    address(poolManager),
+                    uint256(uint128(-delta.amount0()))
+                );
                 poolManager.settle();
             }
             if (delta.amount1() < 0) {
+                // Sync, transfer, then settle
+                poolManager.sync(key.currency1);
+                IERC20(Currency.unwrap(key.currency1)).transfer(
+                    address(poolManager),
+                    uint256(uint128(-delta.amount1()))
+                );
                 poolManager.settle();
             }
 
-            // Handle positive deltas (PoolManager owes tokens - send to user)
+            // Handle positive deltas (pool owes tokens to us)
             if (delta.amount0() > 0) {
-                poolManager.take(key.currency0, user, uint256(uint128(delta.amount0())));
+                poolManager.take(key.currency0, address(this), uint256(uint128(delta.amount0())));
             }
             if (delta.amount1() > 0) {
-                poolManager.take(key.currency1, user, uint256(uint128(delta.amount1())));
+                poolManager.take(key.currency1, address(this), uint256(uint128(delta.amount1())));
             }
 
             return abi.encode(BalanceDelta.unwrap(delta));
         }
 
         revert("Unknown operation");
+    }
+
+    /**
+     * @dev Emergency functions for admin
+     */
+    function emergencyWithdraw(address token, uint256 amount) external onlyOwner {
+        IERC20(token).transfer(owner(), amount);
+    }
+
+    function emergencyWithdrawERC1155(uint256 tokenId, uint256 amount) external onlyOwner {
+        tokensContract.safeTransferFrom(address(this), owner(), tokenId, amount, "");
+    }
+
+    /**
+     * @dev ERC1155 receiver
+     */
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes memory
+    ) public pure returns (bytes4) {
+        return this.onERC1155Received.selector;
     }
 }

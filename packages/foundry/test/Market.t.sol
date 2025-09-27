@@ -5,15 +5,19 @@ import "forge-std/Test.sol";
 import "../src/Market.sol";
 import "../src/Player.sol";
 import "../src/Tokens.sol";
+import "../src/Credits.sol";
 import "../src/World.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 contract MarketTest is Test {
     Market public market;
     Player public player;
     Tokens public tokens;
+    Credits public credits;
     World public world;
     PoolManager public poolManager;
 
@@ -24,20 +28,25 @@ contract MarketTest is Test {
         vm.startPrank(owner);
         world = new World(owner);
         tokens = new Tokens(owner, "https://api.test.game/tokens/{id}.json");
+        credits = new Credits(owner);
         poolManager = new PoolManager(owner);
-        player = new Player(owner, address(world), address(0), address(0)); // Ships and Credits contracts not needed for this test
-        market = new Market(owner, address(player), address(tokens), address(poolManager));
+        player = new Player(owner, address(world), address(0), address(credits));
+        market = new Market(owner, address(player), address(tokens), address(credits), address(poolManager));
         vm.stopPrank();
     }
 
-    function test_SetPlanetMarket() public {
-        vm.startPrank(owner);
-        PoolId poolId = PoolId.wrap(bytes32(uint256(1)));
-        market.setPlanetMarket(1, poolId);
-        assertEq(PoolId.unwrap(market.planetMarkets(1)), PoolId.unwrap(poolId));
-        vm.stopPrank();
+    function test_GetPlanetRequirement() public {
+        // Test that planet requirement is 0 for uninitialized pools
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(1)),
+            fee: 500,
+            tickSpacing: 10,
+            hooks: IHooks(address(0))
+        });
+
+        uint256 requirement = market.getPoolPlanetRequirement(key);
+        assertEq(requirement, 0);
     }
 
-    // Note: A full trade execution test would require a more complex setup
-    // with a deployed Uniswap V4 pool, which is beyond the scope of this basic test.
 }
