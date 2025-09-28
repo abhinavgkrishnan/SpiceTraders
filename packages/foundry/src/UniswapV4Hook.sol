@@ -58,14 +58,17 @@ contract UniswapV4Hook is BaseHook {
         // Query the market registry for planet requirements
         uint256 requiredPlanet = marketRegistry.getPoolPlanetRequirement(key);
 
-        if (requiredPlanet > 0) {
+        if (requiredPlanet > 0 && hookData.length >= 32) {
             // Decode the actual user address from hookData (passed by Market contract)
             address actualUser = abi.decode(hookData, (address));
 
-            // Validate player is registered and on the correct planet
-            require(playerContract.isPlayerRegistered(actualUser), "Player not registered");
-            uint256 playerLocation = playerContract.getPlayerLocation(actualUser);
-            require(playerLocation == requiredPlanet, "Player not on required planet for this market");
+            // Skip validation for address(0) - used by quoters
+            if (actualUser != address(0)) {
+                // Validate player is registered and on the correct planet
+                require(playerContract.isPlayerRegistered(actualUser), "Player not registered");
+                uint256 playerLocation = playerContract.getPlayerLocation(actualUser);
+                require(playerLocation == requiredPlanet, "Player not on required planet for this market");
+            }
         }
 
         // Hook validation passed - allow the swap

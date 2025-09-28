@@ -14,7 +14,13 @@
     "deploy:sepolia": "yarn workspace foundry deploy:sepolia",
     "deploy:base": "yarn workspace foundry deploy:base"
   },
-  "keywords": ["blockchain", "game", "farcaster", "base", "defi"],
+  "keywords": [
+    "blockchain",
+    "game",
+    "farcaster",
+    "base",
+    "defi"
+  ],
   "author": "",
   "license": "MIT"
 }
