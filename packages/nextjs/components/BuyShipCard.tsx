@@ -168,47 +168,44 @@ export function BuyShipCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         {SHIP_CLASSES.map((shipClass) => {
-          const ShipPriceDisplay = () => {
-            const { price } = useShipPrice(shipClass.id);
-            const shipPriceFormatted = formatUnits(BigInt(price), 18);
-            const canAfford = Number(credits) >= Number(shipPriceFormatted);
+          const { price } = useShipPrice(shipClass.id);
+          const shipPriceFormatted = formatUnits(BigInt(price), 18);
+          const canAfford = Number(credits) >= Number(shipPriceFormatted);
 
-            return (
+          return (
+            <div key={shipClass.id}>
+              <div
+                className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                  canAfford
+                    ? "border-border hover:border-amber-500/50"
+                    : "border-destructive/30 opacity-60"
+                }`}
+                onClick={() => canAfford && handleBuyClick(shipClass.id)}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="font-medium">{shipClass.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {shipClass.description}
+                    </p>
+                  </div>
+                  <span className={`text-sm font-bold ${canAfford ? "text-amber-400" : "text-destructive"}`}>
+                    {parseFloat(shipPriceFormatted).toLocaleString()} ☉
+                  </span>
+                </div>
+                <div className="flex gap-4 text-xs text-muted-foreground">
+                  <span>Cargo: {shipClass.cargo}</span>
+                  <span>Spice: {shipClass.spice}</span>
+                  <span>Speed: {shipClass.speed}</span>
+                </div>
+              </div>
               <Dialog
-                key={shipClass.id}
                 open={dialogOpen && selectedClass === shipClass.id}
                 onOpenChange={(open) => {
                   setDialogOpen(open);
                   if (!open) setSelectedClass(null);
                 }}
               >
-                <DialogTrigger asChild>
-                  <div
-                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                      canAfford
-                        ? "border-border hover:border-amber-500/50"
-                        : "border-destructive/30 opacity-60"
-                    }`}
-                    onClick={() => canAfford && handleBuyClick(shipClass.id)}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <p className="font-medium">{shipClass.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {shipClass.description}
-                        </p>
-                      </div>
-                      <span className={`text-sm font-bold ${canAfford ? "text-amber-400" : "text-destructive"}`}>
-                        {parseFloat(shipPriceFormatted).toLocaleString()} ☉
-                      </span>
-                    </div>
-                    <div className="flex gap-4 text-xs text-muted-foreground">
-                      <span>Cargo: {shipClass.cargo}</span>
-                      <span>Spice: {shipClass.spice}</span>
-                      <span>Speed: {shipClass.speed}</span>
-                    </div>
-                  </div>
-                </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle className="text-amber-500 flex items-center gap-2">
@@ -300,10 +297,8 @@ export function BuyShipCard() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-            );
-          };
-
-          return <ShipPriceDisplay key={shipClass.id} />;
+            </div>
+          );
         })}
       </CardContent>
     </Card>

@@ -25,6 +25,7 @@ export function usePlayerState() {
     args: address ? [address] : undefined,
     query: {
       enabled: !!address && !!isRegistered,
+      refetchInterval: 5000,
     },
   });
 

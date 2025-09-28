@@ -33,6 +33,7 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
   const { verify, isVerifying, verificationResult, isAvailable: isWorldIDAvailable } = useWorldID();
   const [shipName, setShipName] = useState("");
   const [isWorldIDVerified, setIsWorldIDVerified] = useState(false);
+  const [hasShownSuccessToast, setHasShownSuccessToast] = useState(false);
 
   const handleWorldIDVerify = async () => {
     try {
@@ -81,16 +82,25 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
 
   // Watch for transaction success
   useEffect(() => {
-    if (isSuccess && hash) {
+    if (isSuccess && hash && !hasShownSuccessToast) {
+      setHasShownSuccessToast(true);
       toast({
         title: "Welcome, Commander!",
         description: `${shipName} is ready for duty`,
       });
       setTimeout(() => {
         onSuccess();
-      }, 1000);
+      }, 1500);
     }
-  }, [isSuccess, hash, shipName, onSuccess, toast]);
+  }, [isSuccess, hash, shipName, onSuccess, toast, hasShownSuccessToast]);
+
+  // Reset state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setHasShownSuccessToast(false);
+      setShipName("");
+    }
+  }, [open]);
 
   return (
     <Dialog open={open}>
