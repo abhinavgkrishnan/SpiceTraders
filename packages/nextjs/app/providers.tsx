@@ -4,8 +4,25 @@ import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConnectKitProvider } from "connectkit";
 import { config } from "@/lib/wagmi";
+import { MiniKitProvider } from "../components/MiniKitProvider";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Reduce API calls with longer stale times
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+      retry: 2, // Retry failed requests 2 times
+      retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+      refetchOnWindowFocus: false, // Don't refetch on window focus
+      refetchOnMount: false, // Don't refetch on mount if data exists
+      refetchOnReconnect: true, // Only refetch on reconnect
+    },
+    mutations: {
+      retry: 1, // Retry mutations once
+    },
+  },
+});
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -37,7 +54,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
             "--ck-border-radius": "8px",
           }}
         >
-          {children}
+          <MiniKitProvider>
+            {children}
+          </MiniKitProvider>
         </ConnectKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

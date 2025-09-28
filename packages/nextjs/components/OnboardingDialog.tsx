@@ -13,9 +13,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useWorldID } from "@/hooks/useWorldID";
+import { useMiniKit } from "@/components/MiniKitProvider";
 import { CONTRACTS } from "@/constants/contracts";
 import { PlayerABI } from "@/constants/abis";
-import { Rocket } from "lucide-react";
+import { Rocket, Shield } from "lucide-react";
 
 interface OnboardingDialogProps {
   open: boolean;
@@ -27,10 +29,34 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
   const { writeContractAsync, data: hash, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const { toast } = useToast();
+  const { isWorldApp } = useMiniKit();
+  const { verify, isVerifying, verificationResult, isAvailable: isWorldIDAvailable } = useWorldID();
   const [shipName, setShipName] = useState("");
+  const [isWorldIDVerified, setIsWorldIDVerified] = useState(false);
+
+  const handleWorldIDVerify = async () => {
+    try {
+      const result = await verify("spice-traders-registration", address);
+      if (result.status === "success") {
+        setIsWorldIDVerified(true);
+        toast({
+          title: "World ID Verified",
+          description: "Your identity has been verified!",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Verification Failed",
+        description: error.message || "World ID verification failed",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleOnboard = async () => {
     if (!address || !shipName.trim()) return;
+
+    // World ID verification is optional - proceed without it if not verified
 
     try {
       const txHash = await writeContractAsync({
@@ -99,6 +125,36 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
             </div>
           </div>
 
+          {isWorldApp && isWorldIDAvailable && (
+            <div className="space-y-2 p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
+              <div className="flex items-center gap-2 text-sm font-medium text-amber-400">
+                <Shield className="h-4 w-4" />
+                World ID Verification
+              </div>
+              {!isWorldIDVerified ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Required: Verify your identity to access trading features and begin your journey.
+                  </p>
+                  <Button
+                    onClick={handleWorldIDVerify}
+                    disabled={isVerifying}
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                  >
+                    {isVerifying ? "Verifying..." : "Verify with World ID"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-green-400">
+                  <span className="text-green-400">✓</span>
+                  <span>Identity verified</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-2">
             <label htmlFor="shipName" className="text-sm font-medium">
               Name your ship
@@ -117,7 +173,7 @@ export function OnboardingDialog({ open, onSuccess }: OnboardingDialogProps) {
         <DialogFooter>
           <Button
             onClick={handleOnboard}
-            disabled={!shipName.trim() || isPending || isConfirming}
+            disabled={!shipName.trim() || isPending || isConfirming || (isWorldApp && !isWorldIDVerified)}
             size="lg"
             className="w-full"
           >

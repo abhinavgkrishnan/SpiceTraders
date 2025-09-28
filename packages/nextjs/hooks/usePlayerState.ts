@@ -7,7 +7,7 @@ export function usePlayerState() {
   const { address } = useAccount();
   const [currentTime, setCurrentTime] = useState(Math.floor(Date.now() / 1000));
 
-  const { data: isRegistered, isLoading: isLoadingRegistered, error: errorRegistered } = useReadContract({
+  const { data: isRegistered, isLoading: isLoadingRegistered, error: errorRegistered, refetch: refetchRegistered } = useReadContract({
     address: CONTRACTS.Player,
     abi: PlayerABI,
     functionName: "isPlayerRegistered",
@@ -18,7 +18,7 @@ export function usePlayerState() {
     },
   });
 
-  const { data: playerState, isLoading: isLoadingState, refetch, error: errorState } = useReadContract({
+  const { data: playerState, isLoading: isLoadingState, refetch: refetchState, error: errorState } = useReadContract({
     address: CONTRACTS.Player,
     abi: PlayerABI,
     functionName: "getPlayerState",
@@ -43,6 +43,11 @@ export function usePlayerState() {
 
   const isTraveling = playerState ? Number(playerState.currentTripEndTime) > currentTime : false;
   const travelTimeRemaining = playerState ? Math.max(0, Number(playerState.currentTripEndTime) - currentTime) : 0;
+
+  const refetch = async () => {
+    await refetchRegistered();
+    await refetchState();
+  };
 
   return {
     isRegistered: hasError ? false : !!isRegistered,

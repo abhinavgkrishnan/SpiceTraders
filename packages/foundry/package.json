@@ -5,7 +5,7 @@
   "scripts": {
     "compile": "forge build",
     "test": "forge test",
-    "deploy:sepolia": "forge script script/Deploy.s.sol:DeployScript --rpc-url base_sepolia --broadcast --verify -vvvv",
-    "deploy:base": "forge script script/Deploy.s.sol:DeployScript --rpc-url base --broadcast --verify -vvvv"
+    "deploy:sepolia": "forge script script/FullDeploy.s.sol:FullDeployScript --rpc-url base_sepolia --broadcast --verify -vvvv",
+    "deploy:base": "forge script script/FullDeploy.s.sol:FullDeployScript --rpc-url base --broadcast --verify -vvvv"
   }
 }

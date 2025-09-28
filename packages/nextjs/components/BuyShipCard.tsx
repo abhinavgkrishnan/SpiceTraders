@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -23,6 +23,8 @@ import { useBalances } from "@/hooks/useBalances";
 import { useBuyShip, useShipPrice } from "@/hooks/useShips";
 import { usePlayerState } from "@/hooks/usePlayerState";
 import { useToast } from "@/hooks/use-toast";
+import { useWorldPayment } from "@/hooks/useWorldPayment";
+import { useMiniKit } from "@/components/MiniKitProvider";
 import { ShoppingCart, Rocket } from "lucide-react";
 import { formatUnits } from "viem";
 
@@ -66,10 +68,20 @@ export function BuyShipCard() {
   const { buyShip, isPending } = useBuyShip();
   const { isTraveling, refetch: refetchPlayer } = usePlayerState();
   const { toast } = useToast();
+  const { isWorldApp } = useMiniKit();
+  const { pay, isProcessing: isPaymentProcessing } = useWorldPayment();
 
   const [selectedClass, setSelectedClass] = useState<number | null>(null);
   const [shipName, setShipName] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Get price for the selected ship class - use 0 as default to avoid null
+  const { price: selectedShipPrice } = useShipPrice(selectedClass ?? 0);
+  
+  // Memoize the price calculation to prevent unnecessary re-renders
+  const priceFormatted = useMemo(() => {
+    return formatUnits(BigInt(selectedShipPrice), 18);
+  }, [selectedShipPrice]);
 
   const handleBuyClick = (classId: number) => {
     setSelectedClass(classId);
@@ -81,11 +93,51 @@ export function BuyShipCard() {
     if (selectedClass === null || !shipName.trim()) return;
 
     try {
-      await buyShip(shipName.trim(), selectedClass);
-      toast({
-        title: "Ship Purchased!",
-        description: `${SHIP_CLASSES[selectedClass].name} added to your fleet`,
-      });
+      // In World App, use World payments
+      if (isWorldApp) {
+        const reference = `ship-${selectedClass}-${Date.now()}`;
+        
+        // Make payment through World App
+        const paymentResult = await pay(
+          priceFormatted, 
+          "WLD", 
+          reference,
+          "0x0000000000000000000000000000000000000000", // TODO: Replace with actual recipient address
+          `Purchase ${SHIP_CLASSES[selectedClass!].name} - ${shipName.trim()}`
+        );
+        
+        if (paymentResult.status === "success") {
+          // Verify payment on backend
+          const verifyResponse = await fetch("/api/verify-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ payload: paymentResult }),
+          });
+          
+          const verification = await verifyResponse.json();
+          
+          if (verification.success) {
+            // Proceed with ship purchase
+            await buyShip(shipName.trim(), selectedClass);
+            toast({
+              title: "Ship Purchased!",
+              description: `${SHIP_CLASSES[selectedClass].name} added to your fleet`,
+            });
+          } else {
+            throw new Error("Payment verification failed");
+          }
+        } else {
+          throw new Error("Payment failed");
+        }
+      } else {
+        // Regular web flow
+        await buyShip(shipName.trim(), selectedClass);
+        toast({
+          title: "Ship Purchased!",
+          description: `${SHIP_CLASSES[selectedClass].name} added to your fleet`,
+        });
+      }
+      
       setDialogOpen(false);
       setShipName("");
       setTimeout(() => {
@@ -110,14 +162,16 @@ export function BuyShipCard() {
           <ShoppingCart className="h-5 w-5" />
           Ship Dealer
         </CardTitle>
-        <CardDescription>Expand your fleet</CardDescription>
+        <CardDescription>
+          {isWorldApp ? "Expand your fleet with World payments" : "Expand your fleet"}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {SHIP_CLASSES.map((shipClass) => {
           const ShipPriceDisplay = () => {
             const { price } = useShipPrice(shipClass.id);
-            const priceFormatted = formatUnits(BigInt(price), 18);
-            const canAfford = Number(credits) >= Number(priceFormatted);
+            const shipPriceFormatted = formatUnits(BigInt(price), 18);
+            const canAfford = Number(credits) >= Number(shipPriceFormatted);
 
             return (
               <Dialog
@@ -145,7 +199,7 @@ export function BuyShipCard() {
                         </p>
                       </div>
                       <span className={`text-sm font-bold ${canAfford ? "text-amber-400" : "text-destructive"}`}>
-                        {parseFloat(priceFormatted).toLocaleString()} ☉
+                        {parseFloat(shipPriceFormatted).toLocaleString()} ☉
                       </span>
                     </div>
                     <div className="flex gap-4 text-xs text-muted-foreground">
@@ -171,7 +225,7 @@ export function BuyShipCard() {
                       <div className="flex justify-between text-sm">
                         <span>Price:</span>
                         <span className="text-amber-400 font-bold">
-                          {parseFloat(priceFormatted).toLocaleString()} Solaris
+                          {parseFloat(shipPriceFormatted).toLocaleString()} Solaris
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
@@ -230,10 +284,18 @@ export function BuyShipCard() {
                       disabled={
                         !shipName.trim() ||
                         isPending ||
+                        isPaymentProcessing ||
                         !canAfford
                       }
                     >
-                      {isPending ? "Purchasing..." : "Purchase"}
+                      {isPending 
+                        ? "Purchasing..." 
+                        : isPaymentProcessing 
+                        ? "Processing payment..." 
+                        : isWorldApp 
+                        ? "Pay with World" 
+                        : "Purchase"
+                      }
                     </Button>
                   </DialogFooter>
                 </DialogContent>

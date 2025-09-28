@@ -119,6 +119,13 @@ contract FullDeployScript is Script {
 
         console.log("\n=== INITIALIZING 20 TRADING PAIRS ===");
 
+        uint160[4] memory initialPrices = [
+            uint160(25054144837504793118641380156),   // Metal: sqrt(0.1) * 2^96 (1:10)
+            uint160(20444912167512469977554720127),   // Sapho: sqrt(1/15) * 2^96 (1:15)
+            uint160(35431911422859123084319296273),   // Water: sqrt(0.2) * 2^96 (1:5)
+            uint160(11209879921606597852305179096)    // Spice: sqrt(0.02) * 2^96 (1:50)
+        ];
+
         wrapperIndex = 0;
         for (uint256 planetId = 1; planetId <= 5; planetId++) {
             for (uint256 resourceId = 0; resourceId < 4; resourceId++) {
@@ -129,7 +136,7 @@ contract FullDeployScript is Script {
                     500,  // 0.05% fee
                     10,   // tick spacing
                     address(hook),
-                    79228162514264337593543950336  // sqrt(1) price
+                    initialPrices[resourceId]
                 );
                 console.log("Initialized pair: Planet", planetId, "Resource", resourceId);
                 wrapperIndex++;
@@ -139,13 +146,13 @@ contract FullDeployScript is Script {
         console.log("\n=== ADDING HIGH LIQUIDITY TO ALL 20 POOLS ===");
 
         // Liquidity configuration [resourceAmount, creditsAmount]
-        // Resources as whole numbers, Credits use 18 decimals (ether)
-        // Sized to match player mining yields (~50-100 per session) with meaningful price impact
+        // Both use 18 decimals since ResourceWrapper scales ERC1155 to ERC20 with 18 decimals
+        // Resource pricing: Metal 1:10, Sapho 1:15, Water 1:5, Spice 1:50
         uint256[2][4] memory baseLiquidity = [
-            [uint256(1000), 10000 ether],  // Metal: 1000 units → 10000 Credits (1:10 ratio)
-            [uint256(800), 12000 ether],   // Sapho: 800 units → 12000 Credits (1:15 ratio)
-            [uint256(2000), 10000 ether],  // Water: 2000 units → 10000 Credits (1:5 ratio)
-            [uint256(200), 10000 ether]    // Spice: 200 units → 10000 Credits (1:50 ratio)
+            [uint256(1000 ether), 10000 ether],  // Metal: 1000 → 10000 Credits (1:10 ratio)
+            [uint256(800 ether), 12000 ether],   // Sapho: 800 → 12000 Credits (1:15 ratio)
+            [uint256(2000 ether), 10000 ether],  // Water: 2000 → 10000 Credits (1:5 ratio)
+            [uint256(200 ether), 10000 ether]    // Spice: 200 → 10000 Credits (1:50 ratio)
         ];
 
         credits.mint(deployer, 1000000 ether);

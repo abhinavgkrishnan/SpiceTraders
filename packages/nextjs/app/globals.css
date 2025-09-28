@@ -24,6 +24,12 @@
     --input: 36 30% 18%;
     --ring: 25 95% 53%;
     --radius: 0.5rem;
+    
+    /* Safe area insets for World App */
+    --safe-area-inset-top: 0px;
+    --safe-area-inset-right: 0px;
+    --safe-area-inset-bottom: 0px;
+    --safe-area-inset-left: 0px;
   }
 }
 
@@ -33,6 +39,11 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Apply safe area insets for World App */
+    padding-top: var(--safe-area-inset-top);
+    padding-right: var(--safe-area-inset-right);
+    padding-bottom: var(--safe-area-inset-bottom);
+    padding-left: var(--safe-area-inset-left);
   }
 }
 

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { ConnectKitButton } from "connectkit";
 import { useAccount } from "wagmi";
 import { usePlayerState } from "@/hooks/usePlayerState";
+import { useMiniKit } from "@/components/MiniKitProvider";
+import { WorldWalletButton } from "@/components/WorldWalletButton";
 import { HUD } from "@/components/HUD";
 import { MineButton } from "@/components/MineButton";
 import { TravelCard } from "@/components/TravelCard";
@@ -16,15 +18,22 @@ import { Rocket } from "lucide-react";
 export default function Home() {
   const { address, isConnected } = useAccount();
   const { isRegistered, isLoading, hasError, refetch } = usePlayerState();
+  const { isWorldApp, isInitialized, userProperties } = useMiniKit();
   const [showOnboarding, setShowOnboarding] = useState(false);
 
+  // Determine if user is connected (either via ConnectKit or World wallet)
+  const isUserConnected = isWorldApp 
+    ? (userProperties && 'walletAddress' in userProperties && isInitialized)
+    : isConnected;
+
+
   useEffect(() => {
-    if (isConnected && !isLoading && !isRegistered && !hasError) {
+    if (isUserConnected && !isLoading && !isRegistered && !hasError) {
       setShowOnboarding(true);
     } else {
       setShowOnboarding(false);
     }
-  }, [isConnected, isLoading, isRegistered, hasError]);
+  }, [isUserConnected, isLoading, isRegistered, hasError]);
 
   const handleOnboardingSuccess = () => {
     setShowOnboarding(false);
@@ -39,17 +48,20 @@ export default function Home() {
             <Rocket className="h-8 w-8 text-amber-500" />
             <h1 className="text-2xl font-bold text-amber-500">Spice Traders</h1>
           </div>
-          <ConnectKitButton />
+          {isWorldApp ? <WorldWalletButton /> : <ConnectKitButton />}
         </header>
 
-        {!isConnected ? (
+        {!isUserConnected ? (
           <div className="flex flex-col items-center justify-center py-20 space-y-4">
             <Rocket className="h-20 w-20 text-amber-500/50" />
             <h2 className="text-xl font-semibold text-muted-foreground">
-              Connect your wallet to begin
+              {isWorldApp ? "Connect your World wallet to begin" : "Connect your wallet to begin"}
             </h2>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Trade resources, mine on distant planets, and build your fortune across the stars
+              {isWorldApp 
+                ? "Use your World wallet to trade resources, mine on distant planets, and build your fortune across the stars"
+                : "Trade resources, mine on distant planets, and build your fortune across the stars"
+              }
             </p>
           </div>
         ) : isLoading ? (

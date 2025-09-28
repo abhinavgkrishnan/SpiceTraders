@@ -13,10 +13,7 @@ export function useMarket() {
     amountIn: string,
     slippage: number = 5
   ) => {
-    const amountInBig = resourceToCredits
-      ? BigInt(amountIn)
-      : parseUnits(amountIn, 18);
-
+    const amountInBig = parseUnits(amountIn, 18);
     const minAmountOut = (amountInBig * BigInt(100 - slippage)) / 100n;
 
     const hash = await writeContractAsync({
@@ -48,11 +45,7 @@ export function useQuote(
   amountIn: string
 ) {
   const amountInBig =
-    amountIn && Number(amountIn) > 0
-      ? resourceToCredits
-        ? BigInt(amountIn)
-        : parseUnits(amountIn, 18)
-      : 0n;
+    amountIn && Number(amountIn) > 0 ? parseUnits(amountIn, 18) : 0n;
 
   const { data: quote, isLoading } = useReadContract({
     address: CONTRACTS.Market,
